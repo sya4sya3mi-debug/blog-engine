@@ -24,56 +24,27 @@ const PUBLISHED_ARTICLES = [
 const S = { bg: "#0A0A0F", card: "#0F0F1A", border: "#1E1E30" };
 
 type Article = {
-  id: number;
-  site: string;
-  site_color: string;
-  title: string;
-  keyword: string;
-  generated_at: string;
-  scheduled_for: string;
-  status: string;
-  content: string;
-  comment: string;
+  id: number; site: string; site_color: string; title: string; keyword: string;
+  generated_at: string; scheduled_for: string; status: string; content: string; comment: string;
 };
 
 async function sendNotification(payload: Record<string, string>) {
   try { await fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); } catch {}
 }
-
 async function fetchArticles(): Promise<Article[]> {
-  try {
-    const res = await fetch("/api/articles");
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.articles ?? [];
-  } catch { return []; }
+  try { const res = await fetch("/api/articles"); if (!res.ok) return []; const data = await res.json(); return data.articles ?? []; } catch { return []; }
 }
-
 async function saveArticle(article: Omit<Article, "id">): Promise<Article | null> {
   try {
-    const res = await fetch("/api/articles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ site: article.site, siteColor: article.site_color, title: article.title, keyword: article.keyword, generatedAt: article.generated_at, scheduledFor: article.scheduled_for, status: article.status, content: article.content, comment: article.comment }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.article;
+    const res = await fetch("/api/articles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ site: article.site, siteColor: article.site_color, title: article.title, keyword: article.keyword, generatedAt: article.generated_at, scheduledFor: article.scheduled_for, status: article.status, content: article.content, comment: article.comment }) });
+    if (!res.ok) return null; const data = await res.json(); return data.article;
   } catch { return null; }
 }
-
 async function updateArticle(id: number, updates: Partial<Article>): Promise<void> {
-  try {
-    await fetch("/api/articles", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
-  } catch {}
+  try { await fetch("/api/articles", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) }); } catch {}
 }
 
-function ReviewModal({ item, editContent, setEditContent, revisionComment, setRevisionComment, sending, sendResult, onApprove, onRevision, onClose, isMobile }: {
-  item: Article; editContent: string; setEditContent: (v: string) => void;
-  revisionComment: string; setRevisionComment: (v: string) => void;
-  sending: boolean; sendResult: "success" | "error" | null;
-  onApprove: () => void; onRevision: () => void; onClose: () => void; isMobile: boolean;
-}) {
+function ReviewModal({ item, editContent, setEditContent, revisionComment, setRevisionComment, sending, sendResult, onApprove, onRevision, onClose, isMobile }: { item: Article; editContent: string; setEditContent: (v: string) => void; revisionComment: string; setRevisionComment: (v: string) => void; sending: boolean; sendResult: "success" | "error" | null; onApprove: () => void; onRevision: () => void; onClose: () => void; isMobile: boolean; }) {
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 0 : 20 }}>
       <div style={{ background: S.card, border: `1px solid ${item.site_color}44`, borderRadius: isMobile ? "16px 16px 0 0" : 16, width: "100%", maxWidth: isMobile ? "100%" : 820, maxHeight: isMobile ? "92vh" : "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -164,18 +135,8 @@ export default function Dashboard() {
   const [sendResult, setSendResult] = useState<"success" | "error" | null>(null);
   const streamRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  useEffect(() => {
-    const d = new Date(); d.setDate(d.getDate() + 1);
-    setScheduleDate(d.toISOString().split("T")[0]);
-    fetchArticles().then(articles => { setQueue(articles); setLoading(false); });
-  }, []);
+  useEffect(() => { const check = () => setIsMobile(window.innerWidth < 768); check(); window.addEventListener("resize", check); return () => window.removeEventListener("resize", check); }, []);
+  useEffect(() => { const d = new Date(); d.setDate(d.getDate() + 1); setScheduleDate(d.toISOString().split("T")[0]); fetchArticles().then(articles => { setQueue(articles); setLoading(false); }); }, []);
 
   const pendingCount = queue.filter(q => q.status === "pending").length;
   const revisionCount = queue.filter(q => q.status === "revision").length;
@@ -186,8 +147,7 @@ export default function Dashboard() {
   function closeReview() { setShowReviewModal(false); setReviewItem(null); }
 
   async function handleApprove() {
-    if (!reviewItem) return;
-    setSending(true);
+    if (!reviewItem) return; setSending(true);
     await updateArticle(reviewItem.id, { status: "approved", content: editContent });
     setQueue(prev => prev.map(q => q.id === reviewItem.id ? { ...q, status: "approved", content: editContent } : q));
     await sendNotification({ type: "approved", title: reviewItem.title, site: reviewItem.site, siteColor: reviewItem.site_color, keyword: reviewItem.keyword, scheduledFor: reviewItem.scheduled_for });
@@ -195,8 +155,7 @@ export default function Dashboard() {
   }
 
   async function handleRevision() {
-    if (!reviewItem || !revisionComment.trim()) return;
-    setSending(true);
+    if (!reviewItem || !revisionComment.trim()) return; setSending(true);
     await updateArticle(reviewItem.id, { status: "revision", comment: revisionComment });
     setQueue(prev => prev.map(q => q.id === reviewItem.id ? { ...q, status: "revision", comment: revisionComment } : q));
     await sendNotification({ type: "revision", title: reviewItem.title, site: reviewItem.site, siteColor: reviewItem.site_color, keyword: reviewItem.keyword, scheduledFor: reviewItem.scheduled_for, revisionComment });
@@ -229,106 +188,36 @@ export default function Dashboard() {
     } catch (e: any) { setStreamText("エラー: " + e.message); setGenerating(false); }
   }
 
-  const reviewTab = (
-    <div>
-      <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 11, color: "#666677", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" as const }}>
-        <span style={{ color: "#00D4FF" }}>✦ AI生成</span><span>→</span><span style={{ color: "#FFB347", fontWeight: 700 }}>◈ レビュー</span><span>→</span><span style={{ color: "#00C896" }}>✓ 承認で投稿</span>
-        <span style={{ marginLeft: "auto", color: "#00C89688", fontSize: 10 }}>承認するまで投稿されません</span>
-      </div>
-      {loading ? (
-        <div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>読み込み中...</div>
-      ) : queue.length === 0 ? (
-        <div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>記事がありません。まず記事を生成してください。</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {queue.map(item => <QueueItem key={item.id} item={item} onReview={openReview} mobile={isMobile} />)}
-        </div>
-      )}
-    </div>
-  );
+  const reviewTab = (<div><div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 11, color: "#666677", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" as const }}><span style={{ color: "#00D4FF" }}>✦ AI生成</span><span>→</span><span style={{ color: "#FFB347", fontWeight: 700 }}>◈ レビュー</span><span>→</span><span style={{ color: "#00C896" }}>✓ 承認で投稿</span><span style={{ marginLeft: "auto", color: "#00C89688", fontSize: 10 }}>承認するまで投稿されません</span></div>{loading ? (<div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>読み込み中...</div>) : queue.length === 0 ? (<div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>記事がありません。まず記事を生成してください。</div>) : (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{queue.map(item => <QueueItem key={item.id} item={item} onReview={openReview} mobile={isMobile} />)}</div>)}</div>);
 
-  const overviewTab = (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,minmax(0,1fr))", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 20 : 28 }}>
-        {[{ label: "総収益", value: `¥${totalRevenue.toLocaleString()}`, color: "#00C896" },{ label: isMobile ? "公開記事" : "公開記事数", value: SITES.reduce((s, x) => s + x.articles, 0), color: "#00D4FF" },{ label: "レビュー待ち", value: pendingCount, color: "#FFB347" },{ label: "差し戻し中", value: revisionCount, color: "#FF6B6B" }].map((kpi, i) => (
-          <div key={i} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : "20px 22px", position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: kpi.color }} />
-            <div style={{ fontSize: 10, color: "#555570", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{kpi.label}</div>
-            <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
-          </div>
-        ))}
-      </div>
-      {isMobile && <div style={{ fontSize: 12, color: "#666677", fontWeight: 600, marginBottom: 10 }}>稼働サイト</div>}
-      <div style={{ display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: isMobile ? undefined : "repeat(3,minmax(0,1fr))", gap: isMobile ? 10 : 14 }}>
-        {SITES.map(site => (
-          <div key={site.id} style={{ background: S.card, border: `1px solid ${site.color}33`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : 20, display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}>
-            <div style={{ minWidth: 0, flex: 1, paddingRight: 12 }}><div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 15, marginBottom: 4, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{site.name}</div><div style={{ fontSize: 11, color: "#555570", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{site.domain}</div></div>
-            <div style={{ display: "flex", gap: 16, textAlign: "right" as const, flexShrink: 0 }}><div><div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: site.color }}>{site.articles}</div><div style={{ fontSize: 10, color: "#555570" }}>記事</div></div><div><div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: site.color }}>¥{site.revenue.toLocaleString()}</div><div style={{ fontSize: 10, color: "#555570" }}>収益</div></div></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  const overviewTab = (<div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,minmax(0,1fr))", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 20 : 28 }}>{[{ label: "総収益", value: `¥${totalRevenue.toLocaleString()}`, color: "#00C896" },{ label: isMobile ? "公開記事" : "公開記事数", value: SITES.reduce((s, x) => s + x.articles, 0), color: "#00D4FF" },{ label: "レビュー待ち", value: pendingCount, color: "#FFB347" },{ label: "差し戻し中", value: revisionCount, color: "#FF6B6B" }].map((kpi, i) => (<div key={i} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : "20px 22px", position: "relative", overflow: "hidden" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: kpi.color }} /><div style={{ fontSize: 10, color: "#555570", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{kpi.label}</div><div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: kpi.color }}>{kpi.value}</div></div>))}</div>{isMobile && <div style={{ fontSize: 12, color: "#666677", fontWeight: 600, marginBottom: 10 }}>稼働サイト</div>}<div style={{ display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: isMobile ? undefined : "repeat(3,minmax(0,1fr))", gap: isMobile ? 10 : 14 }}>{SITES.map(site => (<div key={site.id} style={{ background: S.card, border: `1px solid ${site.color}33`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : 20, display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}><div style={{ minWidth: 0, flex: 1, paddingRight: 12 }}><div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 15, marginBottom: 4, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{site.name}</div><div style={{ fontSize: 11, color: "#555570", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{site.domain}</div></div><div style={{ display: "flex", gap: 16, textAlign: "right" as const, flexShrink: 0 }}><div><div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: site.color }}>{site.articles}</div><div style={{ fontSize: 10, color: "#555570" }}>記事</div></div><div><div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: site.color }}>¥{site.revenue.toLocaleString()}</div><div style={{ fontSize: 10, color: "#555570" }}>収益</div></div></div></div>))}</div></div>);
 
-  const generateTab = (
-    <div style={{ maxWidth: isMobile ? undefined : 720 }}>
-      <GenerateForm selectedSite={selectedSite} setSelectedSite={setSelectedSite} keyword={keyword} setKeyword={setKeyword} affiliate={affiliate} setAffiliate={setAffiliate} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} scheduleTime={scheduleTime} setScheduleTime={setScheduleTime} generating={generating} onGenerate={generateArticle} mobile={isMobile} />
-      <div style={{ padding: "12px 14px", background: "#0F1A14", border: "1px solid #00C89633", borderRadius: 12, fontSize: 11, color: "#00C896", lineHeight: 1.9 }}>
-        ✓ 生成後はSupabaseに自動保存されます<br />✓ 承認するまで投稿されません（期限なし）<br />✓ リロードしてもデータが消えません
-      </div>
-    </div>
-  );
+  const generateTab = (<div style={{ maxWidth: isMobile ? undefined : 720 }}><GenerateForm selectedSite={selectedSite} setSelectedSite={setSelectedSite} keyword={keyword} setKeyword={setKeyword} affiliate={affiliate} setAffiliate={setAffiliate} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} scheduleTime={scheduleTime} setScheduleTime={setScheduleTime} generating={generating} onGenerate={generateArticle} mobile={isMobile} /><div style={{ padding: "12px 14px", background: "#0F1A14", border: "1px solid #00C89633", borderRadius: 12, fontSize: 11, color: "#00C896", lineHeight: 1.9 }}>✓ 生成後はSupabaseに自動保存されます<br />✓ 承認するまで投稿されません（期限なし）<br />✓ リロードしてもデータが消えません</div></div>);
 
-  const articlesTab = (
-    <div style={isMobile ? { display: "flex", flexDirection: "column", gap: 10 } : { background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, overflow: "hidden" }}>
-      {PUBLISHED_ARTICLES.map((a, i) => isMobile ? (
-        <div key={a.id} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 700, background: "#00C89622", color: "#00C896" }}>公開中</span><span style={{ fontSize: 11, color: "#555570" }}>{a.date}</span></div>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{a.title}</div>
-          <div style={{ fontSize: 11, color: "#555570", marginBottom: 10 }}>{a.site}</div>
-          <div style={{ display: "flex", gap: 16 }}><div><span style={{ fontSize: 16, fontWeight: 800, color: "#00D4FF" }}>{a.views.toLocaleString()}</span><span style={{ fontSize: 10, color: "#555570", marginLeft: 4 }}>PV</span></div><div><span style={{ fontSize: 16, fontWeight: 800, color: "#00C896" }}>{a.clicks}</span><span style={{ fontSize: 10, color: "#555570", marginLeft: 4 }}>クリック</span></div></div>
-        </div>
-      ) : (
-        <div key={a.id} style={{ display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: i < PUBLISHED_ARTICLES.length - 1 ? "1px solid #1A1A28" : "none", gap: 14 }}>
-          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: "#00C89622", color: "#00C896", flexShrink: 0 }}>公開中</span>
-          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{a.title}</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>{a.site} · {a.date}</div></div>
-          <div style={{ display: "flex", gap: 20, flexShrink: 0 }}><div style={{ textAlign: "right" as const }}><div style={{ fontSize: 13, fontWeight: 700 }}>{a.views.toLocaleString()}</div><div style={{ fontSize: 10, color: "#555570" }}>PV</div></div><div style={{ textAlign: "right" as const }}><div style={{ fontSize: 13, fontWeight: 700 }}>{a.clicks}</div><div style={{ fontSize: 10, color: "#555570" }}>クリック</div></div></div>
-        </div>
-      ))}
-    </div>
-  );
+  const articlesTab = (<div style={isMobile ? { display: "flex", flexDirection: "column", gap: 10 } : { background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, overflow: "hidden" }}>{PUBLISHED_ARTICLES.map((a, i) => isMobile ? (<div key={a.id} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px" }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 700, background: "#00C89622", color: "#00C896" }}>公開中</span><span style={{ fontSize: 11, color: "#555570" }}>{a.date}</span></div><div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{a.title}</div><div style={{ fontSize: 11, color: "#555570", marginBottom: 10 }}>{a.site}</div><div style={{ display: "flex", gap: 16 }}><div><span style={{ fontSize: 16, fontWeight: 800, color: "#00D4FF" }}>{a.views.toLocaleString()}</span><span style={{ fontSize: 10, color: "#555570", marginLeft: 4 }}>PV</span></div><div><span style={{ fontSize: 16, fontWeight: 800, color: "#00C896" }}>{a.clicks}</span><span style={{ fontSize: 10, color: "#555570", marginLeft: 4 }}>クリック</span></div></div></div>) : (<div key={a.id} style={{ display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: i < PUBLISHED_ARTICLES.length - 1 ? "1px solid #1A1A28" : "none", gap: 14 }}><span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: "#00C89622", color: "#00C896", flexShrink: 0 }}>公開中</span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{a.title}</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>{a.site} · {a.date}</div></div><div style={{ display: "flex", gap: 20, flexShrink: 0 }}><div style={{ textAlign: "right" as const }}><div style={{ fontSize: 13, fontWeight: 700 }}>{a.views.toLocaleString()}</div><div style={{ fontSize: 10, color: "#555570" }}>PV</div></div><div style={{ textAlign: "right" as const }}><div style={{ fontSize: 13, fontWeight: 700 }}>{a.clicks}</div><div style={{ fontSize: 10, color: "#555570" }}>クリック</div></div></div></div>))}</div>);
 
-  const affiliateTab = (
-    <div style={isMobile ? { display: "flex", flexDirection: "column", gap: 10 } : { maxWidth: 640 }}>
-      {[{ id: "amazon", name: "Amazon アソシエイト", color: "#FF9900" },{ id: "rakuten", name: "楽天アフィリエイト", color: "#BF0000" },{ id: "moshimo", name: "もしもアフィリエイト", color: "#4CAF50" }].map(af => (
-        <div key={af.id} style={{ background: S.card, border: `1px solid ${af.color}33`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isMobile ? 0 : 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 14 }}><div style={{ width: isMobile ? 8 : 10, height: isMobile ? 8 : 10, borderRadius: "50%", background: af.color }} /><div><div style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15 }}>{af.name}</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>自動挿入ON</div></div></div>
-          <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: af.color + "22", color: af.color, fontWeight: 700 }}>有効</span>
-        </div>
-      ))}
-    </div>
-  );
+  const affiliateTab = (<div style={isMobile ? { display: "flex", flexDirection: "column", gap: 10 } : { maxWidth: 640 }}>{[{ id: "amazon", name: "Amazon アソシエイト", color: "#FF9900" },{ id: "rakuten", name: "楽天アフィリエイト", color: "#BF0000" },{ id: "moshimo", name: "もしもアフィリエイト", color: "#4CAF50" }].map(af => (<div key={af.id} style={{ background: S.card, border: `1px solid ${af.color}33`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isMobile ? 0 : 14 }}><div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 14 }}><div style={{ width: isMobile ? 8 : 10, height: isMobile ? 8 : 10, borderRadius: "50%", background: af.color }} /><div><div style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15 }}>{af.name}</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>自動挿入ON</div></div></div><span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: af.color + "22", color: af.color, fontWeight: 700 }}>有効</span></div>))}</div>);
 
   if (!isMobile) return (
     <div style={{ fontFamily: "'Noto Sans JP','Hiragino Sans',sans-serif", background: S.bg, minHeight: "100vh", color: "#E8E8F0", display: "flex" }}>
-      <aside style={{ width: 220, background: S.card, borderRight: `1px solid ${S.border}`, display: "flex", flexDirection: "column", padding: "24px 0", flexShrink: 0 }}>
-        <div style={{ padding: "0 20px 24px", borderBottom: `1px solid ${S.border}` }}><div style={{ fontSize: 18, fontWeight: 800, background: "linear-gradient(135deg,#00D4FF,#00C896)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>● BlogEngine</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>Affiliate Automation</div></div>
-        <nav style={{ padding: "16px 12px", flex: 1 }}>
+      <aside style={{ width: 200, background: S.card, borderRight: `1px solid ${S.border}`, display: "flex", flexDirection: "column", padding: "24px 0", flexShrink: 0 }}>
+        <div style={{ padding: "0 16px 24px", borderBottom: `1px solid ${S.border}` }}><div style={{ fontSize: 16, fontWeight: 800, background: "linear-gradient(135deg,#00D4FF,#00C896)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>● BlogEngine</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>Affiliate Automation</div></div>
+        <nav style={{ padding: "16px 8px", flex: 1 }}>
           {[{ id: "overview", label: "ダッシュボード", icon: "⬡" },{ id: "review", label: "レビュー待ち", icon: "◈", badge: badgeCount },{ id: "generate", label: "記事生成", icon: "✦" },{ id: "articles", label: "記事一覧", icon: "≡" },{ id: "affiliate", label: "アフィリエイト", icon: "◎" }].map(item => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === item.id ? 700 : 400, background: activeTab === item.id ? "rgba(0,212,255,0.08)" : "transparent", color: activeTab === item.id ? "#00D4FF" : "#888899" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 16, width: 20, textAlign: "center" as const }}>{item.icon}</span>{item.label}</span>
-              {"badge" in item && (item.badge as number) > 0 && <span style={{ background: "#FF6B6B", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 10, padding: "2px 6px" }}>{item.badge}</span>}
+            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: activeTab === item.id ? 700 : 400, whiteSpace: "nowrap" as const, background: activeTab === item.id ? "rgba(0,212,255,0.08)" : "transparent", color: activeTab === item.id ? "#00D4FF" : "#888899" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 14, width: 18, textAlign: "center" as const, flexShrink: 0 }}>{item.icon}</span>{item.label}</span>
+              {"badge" in item && (item.badge as number) > 0 && <span style={{ background: "#FF6B6B", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 10, padding: "2px 5px", flexShrink: 0 }}>{item.badge}</span>}
             </button>
           ))}
         </nav>
-        <div style={{ padding: "16px 20px", borderTop: `1px solid ${S.border}` }}>{SITES.map(site => (<div key={site.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: site.status === "active" ? site.color : "#333344" }} /><span style={{ fontSize: 12, color: "#666677" }}>{site.name}</span></div>))}</div>
+        <div style={{ padding: "16px", borderTop: `1px solid ${S.border}` }}>{SITES.map(site => (<div key={site.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: site.status === "active" ? site.color : "#333344", flexShrink: 0 }} /><span style={{ fontSize: 11, color: "#666677", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{site.name}</span></div>))}</div>
       </aside>
       <main style={{ flex: 1, overflow: "auto", minWidth: 0 }}>
-        <header style={{ padding: "20px 32px", borderBottom: `1px solid ${S.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: S.bg, position: "sticky", top: 0, zIndex: 10 }}>
-          <div><h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{activeTab === "overview" ? "ダッシュボード" : activeTab === "review" ? "レビュー待ち" : activeTab === "generate" ? "AI記事生成" : activeTab === "articles" ? "記事一覧" : "アフィリエイト設定"}</h1><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555570" }}>{new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p></div>
-          <button onClick={() => setActiveTab("generate")} style={{ background: "linear-gradient(135deg,#00D4FF,#00C896)", border: "none", borderRadius: 10, padding: "10px 20px", color: "#000", fontWeight: 800, fontSize: 13, cursor: "pointer", flexShrink: 0 }}>✦ 記事を生成する</button>
+        <header style={{ padding: "20px 24px", borderBottom: `1px solid ${S.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: S.bg, position: "sticky", top: 0, zIndex: 10 }}>
+          <div><h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{activeTab === "overview" ? "ダッシュボード" : activeTab === "review" ? "レビュー待ち" : activeTab === "generate" ? "AI記事生成" : activeTab === "articles" ? "記事一覧" : "アフィリエイト設定"}</h1><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555570" }}>{new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p></div>
+          <button onClick={() => setActiveTab("generate")} style={{ background: "linear-gradient(135deg,#00D4FF,#00C896)", border: "none", borderRadius: 10, padding: "10px 18px", color: "#000", fontWeight: 800, fontSize: 12, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" as const }}>✦ 記事を生成する</button>
         </header>
-        <div style={{ padding: "28px 32px" }}>
+        <div style={{ padding: "20px 24px" }}>
           {activeTab === "overview" && overviewTab}
           {activeTab === "review" && reviewTab}
           {activeTab === "generate" && generateTab}
