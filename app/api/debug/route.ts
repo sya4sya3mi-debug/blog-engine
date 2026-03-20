@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server'
 // 静的プリレンダリングを防止
 export const dynamic = 'force-dynamic'
 
+const SITE_URL = 'https://blog-engine-phi.vercel.app'
+
 export async function GET() {
   const results: Record<string, any> = {}
 
@@ -47,17 +49,19 @@ export async function GET() {
     console.log('Debug: Testing Rakuten API with keyword:', testKeyword)
     console.log('Debug: accessKey set:', !!rakutenAccessKey)
 
+    // ★ Node.js fetch の referrer オプションで Referer ヘッダーを確実に送信
     const rakutenRes = await fetch(rakutenUrl, {
+      referrer: SITE_URL + '/',
+      referrerPolicy: 'unsafe-url',
       headers: {
-        'Referer': 'https://blog-engine-phi.vercel.app',
-        'User-Agent': 'Mozilla/5.0 BlogEngine/1.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
     })
 
     const rakutenStatus = rakutenRes.status
     const rakutenText = await rakutenRes.text()
     console.log('Debug: Rakuten API status:', rakutenStatus)
-    console.log('Debug: Rakuten response length:', rakutenText.length)
+    console.log('Debug: Rakuten response first 200:', rakutenText.substring(0, 200))
 
     let rakutenData: any = null
     try {
@@ -67,7 +71,6 @@ export async function GET() {
     }
 
     if (rakutenStatus === 200 && rakutenData?.Items) {
-      // レスポンス構造: Items[].Item.itemName または Items[].itemName
       const firstEntry = rakutenData.Items[0]
       const firstItem = firstEntry?.Item || firstEntry
 
@@ -87,10 +90,10 @@ export async function GET() {
       results.rakuten = {
         status: rakutenStatus,
         success: false,
-        error: rakutenData?.error || rakutenData?.error_description || 'Unknown error',
+        error: rakutenData?.error || rakutenData?.errors?.errorMessage || rakutenData?.error_description || 'Unknown error',
         errorDetail: typeof rakutenData === 'object' ? rakutenData : { raw: rakutenText.substring(0, 300) },
       }
-      console.log('Debug: Rakuten API FAILED - status:', rakutenStatus, 'error:', JSON.stringify(results.rakuten.error))
+      console.log('Debug: Rakuten API FAILED - status:', rakutenStatus)
     }
   } catch (e: any) {
     results.rakuten = {
