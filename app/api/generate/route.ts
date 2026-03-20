@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const RAKUTEN_APP_ID = process.env.RAKUTEN_APP_ID ?? "";
+const RAKUTEN_ACCESS_KEY = process.env.RAKUTEN_ACCESS_KEY ?? "";
 const RAKUTEN_AFFILIATE_ID = process.env.RAKUTEN_AFFILIATE_ID ?? "";
 
 async function searchRakutenProducts(keyword: string): Promise<{ name: string; url: string; price: number }[]> {
@@ -10,20 +11,23 @@ async function searchRakutenProducts(keyword: string): Promise<{ name: string; u
       keyword,
       hits: "3",
       sort: "-reviewCount",
-      imageFlag: "1",
     });
+    if (RAKUTEN_ACCESS_KEY) params.set("accessKey", RAKUTEN_ACCESS_KEY);
     if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
-
-        const res = await fetch(`https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params}`);
-    if (!res.ok) return [];
-
+    const res = await fetch("https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?" + params.toString());
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Rakuten API error:", res.status, errText.substring(0, 200));
+      return [];
+    }
     const data = await res.json();
     return (data.Items ?? []).map((item: any) => ({
       name: item.Item.itemName,
       url: RAKUTEN_AFFILIATE_ID ? item.Item.affiliateUrl : item.Item.itemUrl,
       price: item.Item.itemPrice,
     }));
-  } catch {
+  } catch (e) {
+    console.error("Rakuten search error:", e);
     return [];
   }
 }
@@ -34,30 +38,18 @@ function insertAffiliateLinks(text: string, products: { name: string; url: strin
     const product = products[productIndex];
     productIndex++;
     if (!product) return "【楽天で探す】";
-    return `\n👉 [${product.name} (¥${product.price.toLocaleString()}) を楽天で見る](${product.url})\n`;
+    return "\n\n👉 [" + product.name + " (¥" + product.price.toLocaleString() + ") を楽天で見る](" + product.url + ")\n\n";
   });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { keyword, siteTheme, afName } = await req.json();
-
     if (!keyword || !siteTheme) {
       return NextResponse.json({ error: "keyword is required" }, { status: 400 });
     }
 
-    const prompt = `SEOに精通したアフィリエイトブログライターとして記事を作成してください。
-[テーマ] ${siteTheme}
-[キーワード] ${keyword}
-[アフィリエイト] ${afName}
-[文字数] 1000字程度
-
-# [タイトル]
-## はじめに
-## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定：楽天】と記載）
-## まとめ
-
-※メタディスクリプション（120字以内）：`;
+    const prompt = "SEOに精通したアフィリエイトブログライターとして記事を作成してください。\n[テーマ] " + siteTheme + "\n[キーワード] " + keyword + "\n[アフィリエイト] " + afName + "\n[文字数] 1000字程度\n\n# [タイトル]\n## はじめに\n## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定：楽天】と記載）\n## まとめ\n\n※メタディスクリプション（120字以内）：";
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -76,15 +68,16 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const err = await res.json();
       console.error("Anthropic API error:", err);
-      return NextResponse.json({ error: "記事生成に失敗しました" }, { status: 500 });
+      return NextResponse.json({ error: "article generation failed" }, { status: 500 });
     }
 
     const data = await res.json();
-    let text = data.content?.[0]?.text ?? "生成に失敗しました";
+    let text = data.content?.[0]?.text ?? "failed";
 
-    // 楽天アフィリエイトが選択されている場合は商品リンクを自動挿入
     if (afName?.includes("楽天") && RAKUTEN_APP_ID) {
+      console.log("Searching Rakuten for:", keyword);
       const products = await searchRakutenProducts(keyword);
+      console.log("Rakuten products found:", products.length);
       if (products.length > 0) {
         text = insertAffiliateLinks(text, products);
       }
