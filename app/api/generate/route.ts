@@ -14,7 +14,7 @@ async function searchRakutenProducts(keyword: string): Promise<{ name: string; u
     });
     if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
 
-    const res = await fetch(`https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${params}`);
+    const res = await fetch(`https://openapi.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${params}`);
     if (!res.ok) return [];
 
     const data = await res.json();
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const prompt = `SEOに精通したアフィリエイトブログライターとして記事を作成してください。
-[テーマ] ${siteTheme}
+[テーマ] ${siteTheme}h
 [キーワード] ${keyword}
 [アフィリエイト] ${afName}
 [文字数] 1000字程度
