@@ -16,21 +16,22 @@ async function searchRakutenProducts(
       sort: "-reviewCount",
     });
 
-    // ★ accessKey は新API（openapi.rakuten.co.jp）で必須
     if (RAKUTEN_ACCESS_KEY) params.set("accessKey", RAKUTEN_ACCESS_KEY);
     if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
 
-    // ★ 新エンドポイント（2026年2月移行後）
     const url =
       "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?" +
       params.toString();
 
     console.log("Rakuten API requesting with accessKey:", !!RAKUTEN_ACCESS_KEY);
 
+    // ★ Node.js fetch の referrer オプションで Referer ヘッダーを確実に送信
     const res = await fetch(url, {
+      referrer: SITE_URL + "/",
+      referrerPolicy: "unsafe-url",
       headers: {
-        Referer: SITE_URL,
-        "User-Agent": "Mozilla/5.0 BlogEngine/1.0",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     });
 
@@ -47,8 +48,6 @@ async function searchRakutenProducts(
     }
 
     const data = await res.json();
-
-    // 20220601版のレスポンス構造: Items[].Item.itemName
     const items = data.Items ?? [];
     console.log("Rakuten products found:", items.length);
 
@@ -59,7 +58,6 @@ async function searchRakutenProducts(
     }
 
     return items.map((entry: any) => {
-      // レスポンスが Item でラップされている場合とされていない場合に対応
       const item = entry.Item || entry;
       return {
         name: item.itemName,
