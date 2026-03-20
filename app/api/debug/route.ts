@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { request } from 'undici'
+import https from 'https'
 
 // 静的プリレンダリングを防止 + Node.jsランタイムを明示指定
 export const dynamic = 'force-dynamic'
