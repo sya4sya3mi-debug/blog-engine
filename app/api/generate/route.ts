@@ -1,97 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const RAKUTEN_APP_ID = process.env.RAKUTEN_APP_ID ?? "";
-const RAKUTEN_ACCESS_KEY = process.env.RAKUTEN_ACCESS_KEY ?? "";
-const RAKUTEN_AFFILIATE_ID = process.env.RAKUTEN_AFFILIATE_ID ?? "";
-const SITE_URL = "https://blog-engine-phi.vercel.app";
-
-async function searchRakutenProducts(
-  keyword: string
-): Promise<{ name: string; url: string; price: number }[]> {
-  try {
-    const params = new URLSearchParams({
-      applicationId: RAKUTEN_APP_ID,
-      keyword,
-      hits: "3",
-      sort: "-reviewCount",
-    });
-
-    if (RAKUTEN_ACCESS_KEY) params.set("accessKey", RAKUTEN_ACCESS_KEY);
-    if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
-
-    const url =
-      "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?" +
-      params.toString();
-
-    console.log("Rakuten API requesting with accessKey:", !!RAKUTEN_ACCESS_KEY);
-
-    // ★ Node.js fetch の referrer オプションで Referer ヘッダーを確実に送信
-    const res = await fetch(url, {
-      referrer: SITE_URL + "/",
-      referrerPolicy: "unsafe-url",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-
-    console.log("Rakuten API response status:", res.status);
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(
-        "Rakuten API error:",
-        res.status,
-        errText.substring(0, 300)
-      );
-      return [];
-    }
-
-    const data = await res.json();
-    const items = data.Items ?? [];
-    console.log("Rakuten products found:", items.length);
-
-    if (items.length > 0) {
-      const firstItem = items[0]?.Item || items[0];
-      console.log("First item name:", firstItem?.itemName?.substring(0, 40));
-      console.log("First item affiliateUrl exists:", !!firstItem?.affiliateUrl);
-    }
-
-    return items.map((entry: any) => {
-      const item = entry.Item || entry;
-      return {
-        name: item.itemName,
-        url: RAKUTEN_AFFILIATE_ID ? item.affiliateUrl : item.itemUrl,
-        price: item.itemPrice,
-      };
-    });
-  } catch (e) {
-    console.error("Rakuten search error:", e);
-    return [];
-  }
-}
-
-function insertAffiliateLinks(
-  text: string,
-  products: { name: string; url: string; price: number }[]
-): string {
-  let productIndex = 0;
-  return text.replace(/【アフィリエイトリンク挿入予定：楽天】/g, () => {
-    const product = products[productIndex];
-    productIndex++;
-    if (!product) return "【楽天で探す】";
-    return (
-      "\n\n👉 [" +
-      product.name.substring(0, 50) +
-      " (¥" +
-      product.price.toLocaleString() +
-      ") を楽天で見る](" +
-      product.url +
-      ")\n\n"
-    );
-  });
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { keyword, siteTheme, afName } = await req.json();
@@ -136,21 +44,19 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    let text = data.content?.[0]?.text ?? "failed";
+    const text = data.content?.[0]?.text ?? "failed";
 
-    if (afName?.includes("楽天") && RAKUTEN_APP_ID) {
-      console.log("Searching Rakuten for:", keyword);
-      const products = await searchRakutenProducts(keyword);
-      console.log("Rakuten search completed. Products:", products.length);
-      if (products.length > 0) {
-        text = insertAffiliateLinks(text, products);
-        console.log("Affiliate links inserted successfully");
-      } else {
-        console.log("No Rakuten products found, skipping link insertion");
-      }
-    }
+    // 楽天のアフィリエイト情報をクライアントに返す（ブラウザ側でAPIを呼ぶため）
+    const rakutenConfig =
+      afName?.includes("楽天") && process.env.RAKUTEN_APP_ID
+        ? {
+            appId: process.env.RAKUTEN_APP_ID,
+            accessKey: process.env.RAKUTEN_ACCESS_KEY ?? "",
+            affiliateId: process.env.RAKUTEN_AFFILIATE_ID ?? "",
+          }
+        : null;
 
-    return NextResponse.json({ text });
+    return NextResponse.json({ text, rakutenConfig, keyword });
   } catch (err) {
     console.error("Generate API error:", err);
     return NextResponse.json(
