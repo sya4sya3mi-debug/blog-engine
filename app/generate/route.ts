@@ -1,4 +1,45 @@
+GitHub の app/api/generate/route.ts をこのコードに全部置き換えてください。
+
 import { NextRequest, NextResponse } from "next/server";
+
+const RAKUTEN_APP_ID = process.env.RAKUTEN_APP_ID ?? "";
+
+// 楽天商品検索APIで上位3商品を取得
+async function searchRakutenProducts(keyword: string, affiliateId?: string): Promise<{ name: string; url: string; price: number }[]> {
+  try {
+    const params = new URLSearchParams({
+      applicationId: RAKUTEN_APP_ID,
+      keyword,
+      hits: "3",
+      sort: "-reviewCount",
+      imageFlag: "1",
+    });
+    if (affiliateId) params.set("affiliateId", affiliateId);
+
+    const res = await fetch(`https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${params}`);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    return (data.Items ?? []).map((item: any) => ({
+      name: item.Item.itemName,
+      url: affiliateId ? item.Item.affiliateUrl : item.Item.itemUrl,
+      price: item.Item.itemPrice,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// 【アフィリエイトリンク挿入予定：楽天】をHTMLリンクに置き換え
+function insertAffiliateLinks(text: string, products: { name: string; url: string; price: number }[]): string {
+  let productIndex = 0;
+  return text.replace(/【アフィリエイトリンク挿入予定：楽天】/g, () => {
+    const product = products[productIndex];
+    productIndex++;
+    if (!product) return "【楽天で探す】";
+    return `\n👉 [${product.name}（¥${product.price.toLocaleString()}）を楽天で見る](${product.url})\n`;
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,7 +57,7 @@ export async function POST(req: NextRequest) {
 
 # [タイトル]
 ## はじめに
-## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定】と記載）
+## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定：楽天】と記載）
 ## まとめ
 ---
 ※メタディスクリプション（120字以内）：`;
@@ -42,7 +83,16 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    const text = data.content?.[0]?.text ?? "生成に失敗しました";
+    let text = data.content?.[0]?.text ?? "生成に失敗しました";
+
+    // 楽天アフィリエイトが選択されている場合は商品リンクを自動挿入
+    if (afName?.includes("楽天") && RAKUTEN_APP_ID) {
+      const products = await searchRakutenProducts(keyword);
+      if (products.length > 0) {
+        text = insertAffiliateLinks(text, products);
+      }
+    }
+
     return NextResponse.json({ text });
   } catch (err) {
     console.error("Generate API error:", err);
