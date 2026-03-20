@@ -7,7 +7,7 @@ async function searchRakutenProducts(keyword: string): Promise<{ name: string; u
   try {
     const params = new URLSearchParams({
       applicationId: RAKUTEN_APP_ID,
-      keyword,h
+      keyword,
       hits: "3",
       sort: "-reviewCount",
       imageFlag: "1",
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const prompt = `SEOに精通したアフィリエイトブログライターとして記事を作成してください。
-[テーマ] ${siteTheme}h
+[テーマ] ${siteTheme}
 [キーワード] ${keyword}
 [アフィリエイト] ${afName}
 [文字数] 1000字程度
