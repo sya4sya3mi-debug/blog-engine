@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const RAKUTEN_APP_ID = process.env.RAKUTEN_APP_ID ?? "";
+const RAKUTEN_ACCESS_KEY = process.env.RAKUTEN_ACCESS_KEY ?? "";
 const RAKUTEN_AFFILIATE_ID = process.env.RAKUTEN_AFFILIATE_ID ?? "";
 const SITE_URL = "https://blog-engine-phi.vercel.app";
 
@@ -13,17 +14,18 @@ async function searchRakutenProducts(
       keyword,
       hits: "3",
       sort: "-reviewCount",
-      formatVersion: "2",
     });
 
+    // ★ accessKey は新API（openapi.rakuten.co.jp）で必須
+    if (RAKUTEN_ACCESS_KEY) params.set("accessKey", RAKUTEN_ACCESS_KEY);
     if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
 
-    // ★ 正しいエンドポイントURL
+    // ★ 新エンドポイント（2026年2月移行後）
     const url =
-      "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?" +
+      "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?" +
       params.toString();
 
-    console.log("Rakuten API request URL (masked):", url.replace(RAKUTEN_APP_ID, "***").replace(RAKUTEN_AFFILIATE_ID, "***"));
+    console.log("Rakuten API requesting with accessKey:", !!RAKUTEN_ACCESS_KEY);
 
     const res = await fetch(url, {
       headers: {
@@ -45,20 +47,26 @@ async function searchRakutenProducts(
     }
 
     const data = await res.json();
+
+    // 20220601版のレスポンス構造: Items[].Item.itemName
     const items = data.Items ?? [];
     console.log("Rakuten products found:", items.length);
 
     if (items.length > 0) {
-      console.log("First item name:", items[0]?.itemName?.substring(0, 40));
-      console.log("First item affiliateUrl exists:", !!items[0]?.affiliateUrl);
+      const firstItem = items[0]?.Item || items[0];
+      console.log("First item name:", firstItem?.itemName?.substring(0, 40));
+      console.log("First item affiliateUrl exists:", !!firstItem?.affiliateUrl);
     }
 
-    // formatVersion=2 の場合、item.itemName で直接アクセスできる
-    return items.map((item: any) => ({
-      name: item.itemName,
-      url: RAKUTEN_AFFILIATE_ID ? item.affiliateUrl : item.itemUrl,
-      price: item.itemPrice,
-    }));
+    return items.map((entry: any) => {
+      // レスポンスが Item でラップされている場合とされていない場合に対応
+      const item = entry.Item || entry;
+      return {
+        name: item.itemName,
+        url: RAKUTEN_AFFILIATE_ID ? item.affiliateUrl : item.itemUrl,
+        price: item.itemPrice,
+      };
+    });
   } catch (e) {
     console.error("Rakuten search error:", e);
     return [];
