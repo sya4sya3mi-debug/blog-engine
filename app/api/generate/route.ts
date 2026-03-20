@@ -7,14 +7,14 @@ async function searchRakutenProducts(keyword: string): Promise<{ name: string; u
   try {
     const params = new URLSearchParams({
       applicationId: RAKUTEN_APP_ID,
-      keyword,
+      keyword,h
       hits: "3",
       sort: "-reviewCount",
       imageFlag: "1",
     });
     if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
 
-    const res = await fetch(`https://openapi.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${params}`);
+        const res = await fetch(`https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params}`);
     if (!res.ok) return [];
 
     const data = await res.json();
