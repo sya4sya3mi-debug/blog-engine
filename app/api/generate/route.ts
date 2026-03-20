@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const RAKUTEN_APP_ID = process.env.RAKUTEN_APP_ID ?? "";
+const RAKUTEN_AFFILIATE_ID = process.env.RAKUTEN_AFFILIATE_ID ?? "";
 
-// 楽天商品検索APIで上位3商品を取得
-async function searchRakutenProducts(keyword: string, affiliateId?: string): Promise<{ name: string; url: string; price: number }[]> {
+async function searchRakutenProducts(keyword: string): Promise<{ name: string; url: string; price: number }[]> {
   try {
     const params = new URLSearchParams({
       applicationId: RAKUTEN_APP_ID,
@@ -12,7 +12,7 @@ async function searchRakutenProducts(keyword: string, affiliateId?: string): Pro
       sort: "-reviewCount",
       imageFlag: "1",
     });
-    if (affiliateId) params.set("affiliateId", affiliateId);
+    if (RAKUTEN_AFFILIATE_ID) params.set("affiliateId", RAKUTEN_AFFILIATE_ID);
 
     const res = await fetch(`https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${params}`);
     if (!res.ok) return [];
@@ -20,7 +20,7 @@ async function searchRakutenProducts(keyword: string, affiliateId?: string): Pro
     const data = await res.json();
     return (data.Items ?? []).map((item: any) => ({
       name: item.Item.itemName,
-      url: affiliateId ? item.Item.affiliateUrl : item.Item.itemUrl,
+      url: RAKUTEN_AFFILIATE_ID ? item.Item.affiliateUrl : item.Item.itemUrl,
       price: item.Item.itemPrice,
     }));
   } catch {
@@ -28,14 +28,13 @@ async function searchRakutenProducts(keyword: string, affiliateId?: string): Pro
   }
 }
 
-// 【アフィリエイトリンク挿入予定：楽天】をHTMLリンクに置き換え
 function insertAffiliateLinks(text: string, products: { name: string; url: string; price: number }[]): string {
   let productIndex = 0;
   return text.replace(/【アフィリエイトリンク挿入予定：楽天】/g, () => {
     const product = products[productIndex];
     productIndex++;
     if (!product) return "【楽天で探す】";
-    return `\n👉 [${product.name}（¥${product.price.toLocaleString()}）を楽天で見る](${product.url})\n`;
+    return `\n👉 [${product.name} (¥${product.price.toLocaleString()}) を楽天で見る](${product.url})\n`;
   });
 }
 
@@ -44,20 +43,20 @@ export async function POST(req: NextRequest) {
     const { keyword, siteTheme, afName } = await req.json();
 
     if (!keyword || !siteTheme) {
-      return NextResponse.json({ error: "キーワードが必要です" }, { status: 400 });
+      return NextResponse.json({ error: "keyword is required" }, { status: 400 });
     }
 
     const prompt = `SEOに精通したアフィリエイトブログライターとして記事を作成してください。
-【テーマ】${siteTheme}
-【キーワード】${keyword}
-【アフィリエイト】${afName}
-【文字数】1000字程度
+[テーマ] ${siteTheme}
+[キーワード] ${keyword}
+[アフィリエイト] ${afName}
+[文字数] 1000字程度
 
 # [タイトル]
 ## はじめに
 ## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定：楽天】と記載）
 ## まとめ
----
+
 ※メタディスクリプション（120字以内）：`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
