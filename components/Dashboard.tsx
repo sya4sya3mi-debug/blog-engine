@@ -43,8 +43,21 @@ async function saveArticle(article: Omit<Article, "id">): Promise<Article | null
 async function updateArticle(id: number, updates: Partial<Article>): Promise<void> {
   try { await fetch("/api/articles", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) }); } catch {}
 }
+async function postToWordPress(title: string, content: string): Promise<{ ok: boolean; postUrl?: string; editUrl?: string; error?: string }> {
+  try {
+    const res = await fetch("/api/wordpress", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, content, status: "draft" }) });
+    const data = await res.json();
+    return data;
+  } catch { return { ok: false, error: "WordPress投稿に失敗しました" }; }
+}
 
-function ReviewModal({ item, editContent, setEditContent, revisionComment, setRevisionComment, sending, sendResult, onApprove, onRevision, onClose, isMobile }: { item: Article; editContent: string; setEditContent: (v: string) => void; revisionComment: string; setRevisionComment: (v: string) => void; sending: boolean; sendResult: "success" | "error" | null; onApprove: () => void; onRevision: () => void; onClose: () => void; isMobile: boolean; }) {
+function ReviewModal({ item, editContent, setEditContent, revisionComment, setRevisionComment, sending, sendResult, wpResult, onApprove, onRevision, onClose, isMobile }: {
+  item: Article; editContent: string; setEditContent: (v: string) => void;
+  revisionComment: string; setRevisionComment: (v: string) => void;
+  sending: boolean; sendResult: "success" | "error" | null;
+  wpResult: { ok: boolean; editUrl?: string } | null;
+  onApprove: () => void; onRevision: () => void; onClose: () => void; isMobile: boolean;
+}) {
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 0 : 20 }}>
       <div style={{ background: S.card, border: `1px solid ${item.site_color}44`, borderRadius: isMobile ? "16px 16px 0 0" : 16, width: "100%", maxWidth: isMobile ? "100%" : 820, maxHeight: isMobile ? "92vh" : "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -55,12 +68,25 @@ function ReviewModal({ item, editContent, setEditContent, revisionComment, setRe
         <div style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px" : "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div><label style={{ fontSize: 12, color: "#888899", fontWeight: 600, display: "block", marginBottom: 8 }}>記事本文（直接編集可）</label><textarea value={editContent} onChange={e => setEditContent(e.target.value)} style={{ width: "100%", minHeight: isMobile ? 200 : 300, background: "#14141F", border: "1.5px solid #2A2A3C", borderRadius: 10, padding: "12px 14px", color: "#E8E8F0", fontSize: 13, lineHeight: 1.8, outline: "none", resize: "vertical" as const, boxSizing: "border-box" as const, fontFamily: "inherit" }} /></div>
           <div><label style={{ fontSize: 12, color: "#888899", fontWeight: 600, display: "block", marginBottom: 8 }}>差し戻しコメント（差し戻す場合のみ）</label><input value={revisionComment} onChange={e => setRevisionComment(e.target.value)} placeholder="修正内容を入力..." style={{ width: "100%", background: "#14141F", border: "1.5px solid #2A2A3C", borderRadius: 10, padding: "11px 14px", color: "#E8E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" as const }} /></div>
-          {sendResult && (<div style={{ padding: "10px 14px", background: sendResult === "success" ? "#00C89622" : "#FF6B6B22", border: `1px solid ${sendResult === "success" ? "#00C89644" : "#FF6B6B44"}`, borderRadius: 8, fontSize: 12, color: sendResult === "success" ? "#00C896" : "#FF6B6B" }}>{sendResult === "success" ? "✓ メール通知を送信しました" : "✗ メール送信に失敗しました"}</div>)}
+          {sendResult === "success" && wpResult?.ok && (
+            <div style={{ padding: "12px 14px", background: "#00C89622", border: "1px solid #00C89644", borderRadius: 8, fontSize: 12, color: "#00C896", lineHeight: 1.8 }}>
+              ✓ 承認しました！WordPressに下書き保存されました<br />
+              {wpResult.editUrl && <a href={wpResult.editUrl} target="_blank" rel="noreferrer" style={{ color: "#00D4FF", textDecoration: "underline" }}>→ WordPressで編集・公開する</a>}
+            </div>
+          )}
+          {sendResult === "success" && wpResult && !wpResult.ok && (
+            <div style={{ padding: "10px 14px", background: "#FFB34722", border: "1px solid #FFB34744", borderRadius: 8, fontSize: 12, color: "#FFB347" }}>
+              ✓ 承認しました（WordPress投稿は失敗しました。WP設定を確認してください）
+            </div>
+          )}
+          {sendResult === "error" && (<div style={{ padding: "10px 14px", background: "#FF6B6B22", border: "1px solid #FF6B6B44", borderRadius: 8, fontSize: 12, color: "#FF6B6B" }}>✗ エラーが発生しました</div>)}
         </div>
         <div style={{ padding: isMobile ? "12px 16px" : "16px 24px", borderTop: `1px solid ${S.border}`, display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
-          {!isMobile && <div style={{ fontSize: 12, color: "#555570", marginRight: "auto" }}>承認後：{item.scheduled_for} に自動投稿</div>}
+          {!isMobile && <div style={{ fontSize: 12, color: "#555570", marginRight: "auto" }}>承認 → WordPressに下書き保存</div>}
           <button onClick={onRevision} disabled={!revisionComment.trim() || sending} style={{ flex: isMobile ? 1 : "none" as any, padding: isMobile ? "12px" : "10px 20px", borderRadius: 10, border: "1px solid #FF6B6B55", background: "transparent", color: !revisionComment.trim() || sending ? "#444455" : "#FF6B6B", fontSize: 13, fontWeight: 700, cursor: !revisionComment.trim() || sending ? "not-allowed" : "pointer" }}>差し戻す</button>
-          <button onClick={onApprove} disabled={sending} style={{ flex: isMobile ? 2 : "none" as any, padding: isMobile ? "12px" : "10px 24px", borderRadius: 10, border: "none", background: sending ? "#1A1A28" : `linear-gradient(135deg,${item.site_color},${item.site_color}BB)`, color: sending ? "#444455" : "#000", fontSize: 13, fontWeight: 800, cursor: sending ? "not-allowed" : "pointer" }}>{sending ? "送信中..." : "✓ 承認して予約投稿"}</button>
+          <button onClick={onApprove} disabled={sending || sendResult === "success"} style={{ flex: isMobile ? 2 : "none" as any, padding: isMobile ? "12px" : "10px 24px", borderRadius: 10, border: "none", background: sending || sendResult === "success" ? "#1A1A28" : `linear-gradient(135deg,${item.site_color},${item.site_color}BB)`, color: sending || sendResult === "success" ? "#444455" : "#000", fontSize: 13, fontWeight: 800, cursor: sending || sendResult === "success" ? "not-allowed" : "pointer" }}>
+            {sending ? "投稿中..." : sendResult === "success" ? "✓ 完了" : "✓ 承認してWordPressに投稿"}
+          </button>
         </div>
       </div>
     </div>
@@ -93,10 +119,10 @@ function QueueItem({ item, onReview, mobile }: { item: Article; onReview: (item:
           {item.status === "revision" && item.comment && <div style={{ marginTop: 8, padding: "6px 10px", background: "#FF6B6B11", border: "1px solid #FF6B6B33", borderRadius: 6, fontSize: 11, color: "#FF9999" }}>💬 {item.comment}</div>}
         </div>
         {!mobile && item.status !== "published" && item.status !== "approved" && (<button onClick={() => onReview(item)} style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${item.site_color}55`, background: "transparent", color: item.site_color, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>{item.status === "revision" ? "再レビュー" : "レビューする"}</button>)}
-        {!mobile && item.status === "approved" && <span style={{ padding: "8px 14px", borderRadius: 8, background: "#00C89622", color: "#00C896", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>✓ 予約済み</span>}
+        {!mobile && item.status === "approved" && <span style={{ padding: "8px 14px", borderRadius: 8, background: "#00C89622", color: "#00C896", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>✓ WP投稿済み</span>}
       </div>
       {mobile && item.status !== "published" && item.status !== "approved" && (<button onClick={() => onReview(item)} style={{ width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `1px solid ${item.site_color}55`, background: "transparent", color: item.site_color, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{item.status === "revision" ? "再レビューする" : "レビューする"}</button>)}
-      {mobile && item.status === "approved" && (<div style={{ marginTop: 10, textAlign: "center" as const, padding: "8px", background: "#00C89622", borderRadius: 8, color: "#00C896", fontSize: 12, fontWeight: 700 }}>✓ 予約投稿済み</div>)}
+      {mobile && item.status === "approved" && (<div style={{ marginTop: 10, textAlign: "center" as const, padding: "8px", background: "#00C89622", borderRadius: 8, color: "#00C896", fontSize: 12, fontWeight: 700 }}>✓ WP投稿済み</div>)}
     </div>
   );
 }
@@ -108,7 +134,7 @@ function GenerateForm({ selectedSite, setSelectedSite, keyword, setKeyword, affi
       <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: "#888899", display: "block", marginBottom: 8, fontWeight: 600 }}>投稿サイト</label><div style={{ display: "flex", flexDirection: mobile ? "column" : "row", gap: mobile ? 8 : 10 }}>{SITES.map(site => (<button key={site.id} onClick={() => setSelectedSite(site)} style={{ padding: mobile ? "10px 14px" : "8px 16px", borderRadius: 8, border: `1.5px solid ${selectedSite.id === site.id ? site.color : "#2A2A3C"}`, background: selectedSite.id === site.id ? site.color + "18" : "transparent", color: selectedSite.id === site.id ? site.color : "#666677", fontSize: 13, fontWeight: selectedSite.id === site.id ? 700 : 400, cursor: "pointer", textAlign: "left" as const }}>{site.name}{mobile && <span style={{ fontSize: 11, opacity: 0.6 }}> — {site.domain}</span>}</button>))}</div></div>
       <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: "#888899", display: "block", marginBottom: 8, fontWeight: 600 }}>ターゲットキーワード</label><input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="例：ワイヤレスイヤホン おすすめ" style={{ width: "100%", background: "#14141F", border: "1.5px solid #2A2A3C", borderRadius: 10, padding: "12px 14px", color: "#E8E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" as const }} onFocus={e => e.target.style.borderColor = selectedSite.color} onBlur={e => e.target.style.borderColor = "#2A2A3C"} /></div>
       <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: "#888899", display: "block", marginBottom: 8, fontWeight: 600 }}>アフィリエイト</label><div style={{ display: "flex", gap: 8 }}>{AFFILIATES.map(af => <button key={af.id} onClick={() => setAffiliate(af.id)} style={{ flex: 1, padding: "9px 8px", borderRadius: 8, border: `1.5px solid ${affiliate === af.id ? af.color : "#2A2A3C"}`, background: affiliate === af.id ? af.color + "18" : "transparent", color: affiliate === af.id ? af.color : "#666677", fontSize: 12, fontWeight: affiliate === af.id ? 700 : 400, cursor: "pointer" }}>{af.name}</button>)}</div></div>
-      <div style={{ marginBottom: 20, padding: "12px 14px", background: "#14141F", borderRadius: 10, border: `1px solid ${S.border}` }}><div style={{ fontSize: 11, color: "#888899", fontWeight: 600, marginBottom: 8 }}>◷ 投稿スケジュール（承認後に有効）</div><div style={{ display: "flex", gap: 8 }}><input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ flex: 1, background: "#0F0F1A", border: `1px solid ${S.border}`, borderRadius: 8, padding: "8px 10px", color: "#E8E8F0", fontSize: 12, outline: "none", minWidth: 0 }} /><input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ width: 90, background: "#0F0F1A", border: `1px solid ${S.border}`, borderRadius: 8, padding: "8px 10px", color: "#E8E8F0", fontSize: 12, outline: "none" }} /></div><div style={{ fontSize: 11, color: "#555570", marginTop: 6 }}>※ 承認した後にのみ、この日時に投稿されます</div></div>
+      <div style={{ marginBottom: 20, padding: "12px 14px", background: "#14141F", borderRadius: 10, border: `1px solid ${S.border}` }}><div style={{ fontSize: 11, color: "#888899", fontWeight: 600, marginBottom: 8 }}>◷ 投稿スケジュール</div><div style={{ display: "flex", gap: 8 }}><input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ flex: 1, background: "#0F0F1A", border: `1px solid ${S.border}`, borderRadius: 8, padding: "8px 10px", color: "#E8E8F0", fontSize: 12, outline: "none", minWidth: 0 }} /><input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ width: 90, background: "#0F0F1A", border: `1px solid ${S.border}`, borderRadius: 8, padding: "8px 10px", color: "#E8E8F0", fontSize: 12, outline: "none" }} /></div><div style={{ fontSize: 11, color: "#555570", marginTop: 6 }}>※ 承認後にWordPressへ下書き保存されます</div></div>
       <button onClick={onGenerate} disabled={generating || !keyword.trim()} style={{ width: "100%", background: generating || !keyword.trim() ? "#1A1A28" : `linear-gradient(135deg,${selectedSite.color},${selectedSite.color}BB)`, border: "none", borderRadius: 10, padding: "14px", color: generating || !keyword.trim() ? "#444455" : "#000", fontWeight: 800, fontSize: 14, cursor: generating || !keyword.trim() ? "not-allowed" : "pointer" }}>{generating ? "✦ 生成中..." : "✦ 記事を生成する"}</button>
     </div>
   );
@@ -133,6 +159,7 @@ export default function Dashboard() {
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<"success" | "error" | null>(null);
+  const [wpResult, setWpResult] = useState<{ ok: boolean; editUrl?: string } | null>(null);
   const streamRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { const check = () => setIsMobile(window.innerWidth < 768); check(); window.addEventListener("resize", check); return () => window.removeEventListener("resize", check); }, []);
@@ -143,15 +170,22 @@ export default function Dashboard() {
   const badgeCount = pendingCount + revisionCount;
   const totalRevenue = SITES.reduce((s, x) => s + x.revenue, 0);
 
-  function openReview(item: Article) { setEditContent(item.content); setRevisionComment(""); setSendResult(null); setReviewItem(item); setShowReviewModal(true); }
+  function openReview(item: Article) { setEditContent(item.content); setRevisionComment(""); setSendResult(null); setWpResult(null); setReviewItem(item); setShowReviewModal(true); }
   function closeReview() { setShowReviewModal(false); setReviewItem(null); }
 
   async function handleApprove() {
-    if (!reviewItem) return; setSending(true);
+    if (!reviewItem) return;
+    setSending(true);
+    // 1. Supabaseの状態を更新
     await updateArticle(reviewItem.id, { status: "approved", content: editContent });
     setQueue(prev => prev.map(q => q.id === reviewItem.id ? { ...q, status: "approved", content: editContent } : q));
+    // 2. WordPressに下書き投稿
+    const wp = await postToWordPress(reviewItem.title, editContent);
+    setWpResult(wp);
+    // 3. メール通知
     await sendNotification({ type: "approved", title: reviewItem.title, site: reviewItem.site, siteColor: reviewItem.site_color, keyword: reviewItem.keyword, scheduledFor: reviewItem.scheduled_for });
-    setSendResult("success"); setSending(false);
+    setSendResult("success");
+    setSending(false);
   }
 
   async function handleRevision() {
@@ -188,11 +222,11 @@ export default function Dashboard() {
     } catch (e: any) { setStreamText("エラー: " + e.message); setGenerating(false); }
   }
 
-  const reviewTab = (<div><div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 11, color: "#666677", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" as const }}><span style={{ color: "#00D4FF" }}>✦ AI生成</span><span>→</span><span style={{ color: "#FFB347", fontWeight: 700 }}>◈ レビュー</span><span>→</span><span style={{ color: "#00C896" }}>✓ 承認で投稿</span><span style={{ marginLeft: "auto", color: "#00C89688", fontSize: 10 }}>承認するまで投稿されません</span></div>{loading ? (<div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>読み込み中...</div>) : queue.length === 0 ? (<div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>記事がありません。まず記事を生成してください。</div>) : (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{queue.map(item => <QueueItem key={item.id} item={item} onReview={openReview} mobile={isMobile} />)}</div>)}</div>);
+  const reviewTab = (<div><div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 11, color: "#666677", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" as const }}><span style={{ color: "#00D4FF" }}>✦ AI生成</span><span>→</span><span style={{ color: "#FFB347", fontWeight: 700 }}>◈ レビュー</span><span>→</span><span style={{ color: "#00C896" }}>✓ 承認→WP投稿</span><span style={{ marginLeft: "auto", color: "#00C89688", fontSize: 10 }}>承認するまで投稿されません</span></div>{loading ? (<div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>読み込み中...</div>) : queue.length === 0 ? (<div style={{ textAlign: "center" as const, padding: "40px", color: "#555570" }}>記事がありません。まず記事を生成してください。</div>) : (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{queue.map(item => <QueueItem key={item.id} item={item} onReview={openReview} mobile={isMobile} />)}</div>)}</div>);
 
   const overviewTab = (<div><div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,minmax(0,1fr))", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 20 : 28 }}>{[{ label: "総収益", value: `¥${totalRevenue.toLocaleString()}`, color: "#00C896" },{ label: isMobile ? "公開記事" : "公開記事数", value: SITES.reduce((s, x) => s + x.articles, 0), color: "#00D4FF" },{ label: "レビュー待ち", value: pendingCount, color: "#FFB347" },{ label: "差し戻し中", value: revisionCount, color: "#FF6B6B" }].map((kpi, i) => (<div key={i} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : "20px 22px", position: "relative", overflow: "hidden" }}><div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: kpi.color }} /><div style={{ fontSize: 10, color: "#555570", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{kpi.label}</div><div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: kpi.color }}>{kpi.value}</div></div>))}</div>{isMobile && <div style={{ fontSize: 12, color: "#666677", fontWeight: 600, marginBottom: 10 }}>稼働サイト</div>}<div style={{ display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, gridTemplateColumns: isMobile ? undefined : "repeat(3,minmax(0,1fr))", gap: isMobile ? 10 : 14 }}>{SITES.map(site => (<div key={site.id} style={{ background: S.card, border: `1px solid ${site.color}33`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? "14px 16px" : 20, display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}><div style={{ minWidth: 0, flex: 1, paddingRight: 12 }}><div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 15, marginBottom: 4, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{site.name}</div><div style={{ fontSize: 11, color: "#555570", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{site.domain}</div></div><div style={{ display: "flex", gap: 16, textAlign: "right" as const, flexShrink: 0 }}><div><div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: site.color }}>{site.articles}</div><div style={{ fontSize: 10, color: "#555570" }}>記事</div></div><div><div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: site.color }}>¥{site.revenue.toLocaleString()}</div><div style={{ fontSize: 10, color: "#555570" }}>収益</div></div></div></div>))}</div></div>);
 
-  const generateTab = (<div style={{ maxWidth: isMobile ? undefined : 720 }}><GenerateForm selectedSite={selectedSite} setSelectedSite={setSelectedSite} keyword={keyword} setKeyword={setKeyword} affiliate={affiliate} setAffiliate={setAffiliate} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} scheduleTime={scheduleTime} setScheduleTime={setScheduleTime} generating={generating} onGenerate={generateArticle} mobile={isMobile} /><div style={{ padding: "12px 14px", background: "#0F1A14", border: "1px solid #00C89633", borderRadius: 12, fontSize: 11, color: "#00C896", lineHeight: 1.9 }}>✓ 生成後はSupabaseに自動保存されます<br />✓ 承認するまで投稿されません（期限なし）<br />✓ リロードしてもデータが消えません</div></div>);
+  const generateTab = (<div style={{ maxWidth: isMobile ? undefined : 720 }}><GenerateForm selectedSite={selectedSite} setSelectedSite={setSelectedSite} keyword={keyword} setKeyword={setKeyword} affiliate={affiliate} setAffiliate={setAffiliate} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} scheduleTime={scheduleTime} setScheduleTime={setScheduleTime} generating={generating} onGenerate={generateArticle} mobile={isMobile} /><div style={{ padding: "12px 14px", background: "#0F1A14", border: "1px solid #00C89633", borderRadius: 12, fontSize: 11, color: "#00C896", lineHeight: 1.9 }}>✓ 生成後はSupabaseに自動保存されます<br />✓ 承認するとWordPressに下書き保存されます<br />✓ WordPressで確認・編集してから公開できます</div></div>);
 
   const articlesTab = (<div style={isMobile ? { display: "flex", flexDirection: "column", gap: 10 } : { background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, overflow: "hidden" }}>{PUBLISHED_ARTICLES.map((a, i) => isMobile ? (<div key={a.id} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px" }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 700, background: "#00C89622", color: "#00C896" }}>公開中</span><span style={{ fontSize: 11, color: "#555570" }}>{a.date}</span></div><div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{a.title}</div><div style={{ fontSize: 11, color: "#555570", marginBottom: 10 }}>{a.site}</div><div style={{ display: "flex", gap: 16 }}><div><span style={{ fontSize: 16, fontWeight: 800, color: "#00D4FF" }}>{a.views.toLocaleString()}</span><span style={{ fontSize: 10, color: "#555570", marginLeft: 4 }}>PV</span></div><div><span style={{ fontSize: 16, fontWeight: 800, color: "#00C896" }}>{a.clicks}</span><span style={{ fontSize: 10, color: "#555570", marginLeft: 4 }}>クリック</span></div></div></div>) : (<div key={a.id} style={{ display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: i < PUBLISHED_ARTICLES.length - 1 ? "1px solid #1A1A28" : "none", gap: 14 }}><span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: "#00C89622", color: "#00C896", flexShrink: 0 }}>公開中</span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{a.title}</div><div style={{ fontSize: 11, color: "#555570", marginTop: 2 }}>{a.site} · {a.date}</div></div><div style={{ display: "flex", gap: 20, flexShrink: 0 }}><div style={{ textAlign: "right" as const }}><div style={{ fontSize: 13, fontWeight: 700 }}>{a.views.toLocaleString()}</div><div style={{ fontSize: 10, color: "#555570" }}>PV</div></div><div style={{ textAlign: "right" as const }}><div style={{ fontSize: 13, fontWeight: 700 }}>{a.clicks}</div><div style={{ fontSize: 10, color: "#555570" }}>クリック</div></div></div></div>))}</div>);
 
@@ -226,7 +260,7 @@ export default function Dashboard() {
         </div>
       </main>
       <GenModal show={showGenModal} generating={generating} siteName={selectedSite.name} siteColor={selectedSite.color} keyword={keyword} streamText={streamText} streamRef={streamRef} onClose={() => setShowGenModal(false)} onGoReview={() => { setShowGenModal(false); setKeyword(""); setActiveTab("review"); }} />
-      {showReviewModal && reviewItem && <ReviewModal item={reviewItem} editContent={editContent} setEditContent={setEditContent} revisionComment={revisionComment} setRevisionComment={setRevisionComment} sending={sending} sendResult={sendResult} onApprove={handleApprove} onRevision={handleRevision} onClose={closeReview} isMobile={false} />}
+      {showReviewModal && reviewItem && <ReviewModal item={reviewItem} editContent={editContent} setEditContent={setEditContent} revisionComment={revisionComment} setRevisionComment={setRevisionComment} sending={sending} sendResult={sendResult} wpResult={wpResult} onApprove={handleApprove} onRevision={handleRevision} onClose={closeReview} isMobile={false} />}
     </div>
   );
 
@@ -253,7 +287,7 @@ export default function Dashboard() {
         ))}
       </nav>
       <GenModal show={showGenModal} generating={generating} siteName={selectedSite.name} siteColor={selectedSite.color} keyword={keyword} streamText={streamText} streamRef={streamRef} onClose={() => setShowGenModal(false)} onGoReview={() => { setShowGenModal(false); setKeyword(""); setActiveTab("review"); }} />
-      {showReviewModal && reviewItem && <ReviewModal item={reviewItem} editContent={editContent} setEditContent={setEditContent} revisionComment={revisionComment} setRevisionComment={setRevisionComment} sending={sending} sendResult={sendResult} onApprove={handleApprove} onRevision={handleRevision} onClose={closeReview} isMobile={true} />}
+      {showReviewModal && reviewItem && <ReviewModal item={reviewItem} editContent={editContent} setEditContent={setEditContent} revisionComment={revisionComment} setRevisionComment={setRevisionComment} sending={sending} sendResult={sendResult} wpResult={wpResult} onApprove={handleApprove} onRevision={handleRevision} onClose={closeReview} isMobile={true} />}
     </div>
   );
 }
