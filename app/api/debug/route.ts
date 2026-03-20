@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
+import { request } from 'undici'
 
-// 静的プリレンダリングを防止
+// 静的プリレンダリングを防止 + Node.jsランタイムを明示指定
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 const SITE_URL = 'https://blog-engine-phi.vercel.app'
 
@@ -33,34 +35,34 @@ export async function GET() {
     WP_APP_PASSWORD_FIRST4: wpAppPassword.substring(0, 4) + '...',
   }
 
-  // 2. 楽天API接続テスト（新エンドポイント）
+  // 2. 楽天API接続テスト（undici で Referer を確実に送信）
   try {
     const testKeyword = 'ダイエット'
     const params = new URLSearchParams({
       applicationId: rakutenAppId,
+      accessKey: rakutenAccessKey,
       keyword: testKeyword,
       hits: '3',
+      format: 'json',
     })
-    if (rakutenAccessKey) params.set('accessKey', rakutenAccessKey)
     if (rakutenAffiliateId) params.set('affiliateId', rakutenAffiliateId)
 
     const rakutenUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params.toString()}`
 
-    console.log('Debug: Testing Rakuten API with keyword:', testKeyword)
-    console.log('Debug: accessKey set:', !!rakutenAccessKey)
+    console.log('Debug: Testing Rakuten API with undici')
 
-    // ★ Node.js fetch の referrer オプションで Referer ヘッダーを確実に送信
-    const rakutenRes = await fetch(rakutenUrl, {
-      referrer: SITE_URL + '/',
-      referrerPolicy: 'unsafe-url',
+    const { statusCode, body } = await request(rakutenUrl, {
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'referer': SITE_URL + '/',
+        'origin': SITE_URL,
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'accept': 'application/json',
       },
     })
 
-    const rakutenStatus = rakutenRes.status
-    const rakutenText = await rakutenRes.text()
-    console.log('Debug: Rakuten API status:', rakutenStatus)
+    const rakutenText = await body.text()
+    console.log('Debug: Rakuten API status:', statusCode)
     console.log('Debug: Rakuten response first 200:', rakutenText.substring(0, 200))
 
     let rakutenData: any = null
@@ -70,12 +72,12 @@ export async function GET() {
       rakutenData = { raw: rakutenText.substring(0, 500) }
     }
 
-    if (rakutenStatus === 200 && rakutenData?.Items) {
+    if (statusCode === 200 && rakutenData?.Items) {
       const firstEntry = rakutenData.Items[0]
       const firstItem = firstEntry?.Item || firstEntry
 
       results.rakuten = {
-        status: rakutenStatus,
+        status: statusCode,
         success: true,
         itemCount: rakutenData.Items.length,
         sampleItem: firstItem ? {
@@ -88,20 +90,21 @@ export async function GET() {
       console.log('Debug: Rakuten API SUCCESS - items:', rakutenData.Items.length)
     } else {
       results.rakuten = {
-        status: rakutenStatus,
+        status: statusCode,
         success: false,
         error: rakutenData?.error || rakutenData?.errors?.errorMessage || rakutenData?.error_description || 'Unknown error',
         errorDetail: typeof rakutenData === 'object' ? rakutenData : { raw: rakutenText.substring(0, 300) },
       }
-      console.log('Debug: Rakuten API FAILED - status:', rakutenStatus)
+      console.log('Debug: Rakuten API FAILED - status:', statusCode)
     }
   } catch (e: any) {
     results.rakuten = {
       status: 'FETCH_ERROR',
       success: false,
       error: e.message,
+      stack: e.stack?.substring(0, 200),
     }
-    console.log('Debug: Rakuten API FETCH ERROR:', e.message)
+    console.log('Debug: Rakuten API ERROR:', e.message)
   }
 
   // 3. タイムスタンプ
