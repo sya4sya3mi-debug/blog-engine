@@ -41,6 +41,7 @@ export async function searchRakutenProducts(
   affiliateId: string,
   keyword: string,
   hits: number = 5,
+  accessKey?: string,
 ): Promise<RakutenProduct[]> {
   const params = new URLSearchParams({
     applicationId: appId,
@@ -51,9 +52,19 @@ export async function searchRakutenProducts(
     format: "json",
   });
 
-  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${params}`;
+  // 新APIではaccessKeyが必要
+  if (accessKey) {
+    params.set("accessKey", accessKey);
+  }
 
-  const res = await fetch(url);
+  // 新API（2026年2月〜）のエンドポイント
+  const url = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params}`;
+
+  const res = await fetch(url, {
+    headers: {
+      Origin: "https://blog-engine-phi.vercel.app",
+    },
+  });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`楽天API エラー (${res.status}): ${body}`);
