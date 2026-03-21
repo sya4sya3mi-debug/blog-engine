@@ -38,24 +38,87 @@ interface RakutenApiResponse {
   hits: number;
 }
 
-// ===== 楽天アフィリエイト報酬率テーブル（2026年3月現在） =====
-// ジャンルごとの報酬率(%)
-const COMMISSION_RATES: Record<string, number> = {
-  // 美容・コスメ・香水: 4%
-  "100371": 4,  // スキンケア
-  "100372": 4,  // ベースメイク・メイクアップ
-  "100373": 4,  // ヘアケア・スタイリング
-  "100374": 4,  // ボディケア
-  "100375": 4,  // 美容・コスメ・香水（親）
-  "551176": 4,  // 日焼け止め・UVケア
-  // ダイエット・健康: 4%
-  "100938": 4,  // サプリメント
-  "100939": 4,  // ダイエット
-  // 医薬品・コンタクト: 4%
-  "564500": 4,
-  // デフォルト
-  default: 3,
-};
+// ===== 美容系ジャンルIDホワイトリスト（新API 2026年〜） =====
+// 新APIではgenreIdパラメータが無視されるため、結果をサーバーサイドでフィルタリング
+const BEAUTY_GENRE_WHITELIST = new Set([
+  // スキンケア・基礎化粧品
+  "216348", // 美容液
+  "216307", // 化粧水・ローション
+  "216671", // ボディクリーム
+  "216670", // ボディローション
+  "405061", // クレンジング
+  "503054", // 日焼け止め
+  "567442", // 化粧水（別カテゴリ）
+  "200343", // スキンケア基礎
+  // メイク・コスメ
+  "216349", // ファンデーション
+  "216350", // 口紅・リップ
+  "216351", // アイシャドウ
+  "216352", // マスカラ
+  "210619", // メイクアップ
+  "405063", // ベースメイク
+  "405062", // ポイントメイク
+  // ヘアケア
+  "405409", // シャンプー
+  "567233", // シャンプー（別カテゴリ）
+  "210677", // ヘアケア・スタイリング
+  "216673", // トリートメント
+  "210678", // ヘアカラー
+  // ボディケア
+  "216669", // ボディケア
+  "216672", // ボディソープ
+  "216674", // ハンドケア
+  "503099", // デリケートゾーンケア
+  // サプリメント・健康食品
+  "567602", // マルチビタミン
+  "567607", // プラセンタ
+  "402594", // 酵素サプリ
+  "567604", // コラーゲン
+  "567608", // 美容サプリ
+  "100938", // サプリメント（旧ID互換）
+  // 美容家電・美顔器
+  "216131", // 美顔器
+  "503190", // 美容家電
+  "405068", // 美容機器
+]);
+
+// 美容系ジャンルかどうか判定（ホワイトリスト＋商品名キーワード判定）
+function isBeautyProduct(genreId: string, itemName: string): boolean {
+  // ホワイトリストに含まれる
+  if (BEAUTY_GENRE_WHITELIST.has(genreId)) return true;
+
+  // 商品名に美容系キーワードが含まれる場合も許可
+  const beautyKeywords = [
+    "美容液", "化粧水", "クリーム", "乳液", "洗顔", "クレンジング",
+    "美白", "保湿", "スキンケア", "コスメ", "ファンデ", "リップ",
+    "日焼け止め", "UV", "シャンプー", "トリートメント", "ヘアケア",
+    "美顔器", "サプリ", "コラーゲン", "ヒアルロン酸", "セラミド",
+    "レチノール", "ビタミンC", "ナイアシンアミド", "ピーリング",
+    "毛穴", "ニキビ", "シワ", "たるみ", "エイジング", "アンチエイジング",
+    "脱毛", "除毛", "ボディクリーム", "ボディケア", "ハンドクリーム",
+    "パック", "マスク", "導入", "ブースター", "オールインワン",
+  ];
+
+  // 非美容キーワード（これらが含まれる場合は除外）
+  const excludeKeywords = [
+    "ジャケット", "Tシャツ", "パンツ", "スカート", "ワンピース",
+    "コート", "ブラウス", "セーター", "ニット", "デニム",
+    "スニーカー", "ブーツ", "サンダル", "バッグ", "財布",
+    "イヤホン", "スマホ", "ケーブル", "充電", "PC",
+    "食品", "米", "肉", "魚", "野菜", "フルーツ",
+    "キャミソール", "インナー", "下着", "ブラジャー",
+    "カーテン", "ラグ", "家具", "収納",
+  ];
+
+  const nameContainsExclude = excludeKeywords.some((kw) => itemName.includes(kw));
+  if (nameContainsExclude) return false;
+
+  const nameContainsBeauty = beautyKeywords.some((kw) => itemName.includes(kw));
+  return nameContainsBeauty;
+}
+
+// デフォルト報酬率
+const DEFAULT_COMMISSION_RATE = 3; // %
 
 // ===== テーマ → 楽天ジャンルID マッピング =====
 // 美容系テーマに対応する楽天市場のジャンルIDで絞り込み
@@ -161,9 +224,6 @@ const THEME_GENRE_MAP: Record<string, { genreId: string; minPrice: number; keywo
   },
 };
 
-// フォールバック: マッピングにないテーマは美容・コスメ親ジャンルで絞り込み
-const DEFAULT_BEAUTY_GENRE = "100375"; // 美容・コスメ・香水（親カテゴリ）
-
 export interface SearchOptions {
   keyword: string;
   themeId?: string;        // テーマID（ジャンル自動絞り込み）
@@ -226,13 +286,9 @@ export async function searchRakutenProducts(
   const maxResults = options?.maxResults ?? hits;
   const expandKeywords = options?.expandKeywords ?? !!themeId;
 
-  // ジャンルID: テーマ設定 → フォールバック（美容・コスメ親カテゴリ）
-  const genreId = themeConfig?.genreId ?? DEFAULT_BEAUTY_GENRE;
-
   // 検索キーワードリスト（テーマ別に展開 or 単独）
   const searchKeywords: string[] = [keyword];
   if (expandKeywords && themeConfig?.keywords) {
-    // テーマ別の関連キーワードも追加（重複排除）
     for (const kw of themeConfig.keywords) {
       if (!searchKeywords.includes(kw)) {
         searchKeywords.push(kw);
@@ -247,13 +303,11 @@ export async function searchRakutenProducts(
   for (const kw of keywordsToSearch) {
     try {
       const products = await fetchRakutenApi(appId, affiliateId, kw, 30, accessKey, {
-        genreId,
         minPrice,
         maxPrice,
       });
       allProducts.push(...products);
     } catch (e) {
-      // 1つのキーワードが失敗しても続行
       console.error(`[Rakuten] キーワード「${kw}」の検索に失敗:`, e);
     }
 
@@ -271,14 +325,19 @@ export async function searchRakutenProducts(
     return true;
   });
 
+  // ★ 美容系商品のみフィルタリング（ジャンルID + 商品名キーワード判定）
+  const beautyFiltered = uniqueProducts.filter((p) =>
+    isBeautyProduct(p.genreId, p.itemName)
+  );
+
   // 最低価格フィルタ
-  const filtered = uniqueProducts.filter((p) => p.itemPrice >= minPrice);
+  const priceFiltered = beautyFiltered.filter((p) => p.itemPrice >= minPrice);
 
   // 収益スコアで降順ソート
-  filtered.sort((a, b) => b.profitScore - a.profitScore);
+  priceFiltered.sort((a, b) => b.profitScore - a.profitScore);
 
   // 上位N件を返す
-  return filtered.slice(0, maxResults);
+  return priceFiltered.slice(0, maxResults);
 }
 
 /**
@@ -290,7 +349,7 @@ async function fetchRakutenApi(
   keyword: string,
   hits: number,
   accessKey?: string,
-  filters?: { genreId?: string; minPrice?: number; maxPrice?: number },
+  filters?: { minPrice?: number; maxPrice?: number },
 ): Promise<RakutenProduct[]> {
   const params = new URLSearchParams({
     applicationId: appId,
@@ -306,12 +365,7 @@ async function fetchRakutenApi(
     params.set("accessKey", accessKey);
   }
 
-  // ジャンル絞り込み
-  if (filters?.genreId) {
-    params.set("genreId", filters.genreId);
-  }
-
-  // 価格フィルタ
+  // 価格フィルタ（APIレベル）
   if (filters?.minPrice && filters.minPrice > 0) {
     params.set("minPrice", String(filters.minPrice));
   }
@@ -335,7 +389,8 @@ async function fetchRakutenApi(
 
   return data.Items.map((item) => {
     const genreId = String(item.Item.genreId);
-    const commissionRate = COMMISSION_RATES[genreId] ?? COMMISSION_RATES["default"];
+    // 美容系は基本4%、それ以外は3%
+    const commissionRate = BEAUTY_GENRE_WHITELIST.has(genreId) ? 4 : DEFAULT_COMMISSION_RATE;
     const { profitScore, estimatedCommission } = calculateProfitScore(
       item.Item.itemPrice,
       item.Item.reviewAverage,
