@@ -1,11 +1,50 @@
 // ==========================================
-// BlogEngine V2 - Affiliate Link Management
-// プレースホルダーを登録済みリンクに自動置換
+// BlogEngine V2 - Affiliate Partner Database
+// 提携先DB管理 & テーマ別自動選択 & プレースホルダー置換
 // ==========================================
 
+/** 報酬タイプ */
+export type CommissionType = "cpa" | "cpc" | "percent";
+
+/** 提携先データ */
+export interface AffiliatePartner {
+  id: string;
+  asp: string;             // ASP名（A8.net, afb, もしもアフィリエイト等）
+  programName: string;     // プログラム名（クリニック名・商品名）
+  themeIds: string[];      // 対応テーマID（複数可）
+  commissionType: CommissionType;
+  commissionValue: string; // 報酬額（"5000円", "10%"等の表示用文字列）
+  priority: number;        // 優先度（数値が大きいほど優先）
+  html: string;            // 挿入するアフィリエイトHTML
+  active: boolean;         // 有効/無効
+}
+
+/** 後方互換用（API通信用の簡易形式） */
 export interface AffiliateLink {
   themeId: string;
-  html: string; // 挿入するアフィリエイトHTML（バナー、テキストリンク等）
+  html: string;
+}
+
+/**
+ * テーマIDに合う提携先を優先度順に取得する
+ */
+export function selectPartnersForTheme(
+  partners: AffiliatePartner[],
+  themeId: string,
+): AffiliatePartner[] {
+  return partners
+    .filter((p) => p.active && p.themeIds.includes(themeId) && p.html.trim())
+    .sort((a, b) => b.priority - a.priority);
+}
+
+/**
+ * 提携先リストをAffiliateLink形式に変換（API送信用）
+ */
+export function partnersToLinks(partners: AffiliatePartner[], themeId: string): AffiliateLink[] {
+  return selectPartnersForTheme(partners, themeId).map((p) => ({
+    themeId,
+    html: p.html,
+  }));
 }
 
 /**
@@ -21,16 +60,13 @@ export function replaceAffiliatePlaceholders(
 ): string {
   if (!links || links.length === 0) return htmlContent;
 
-  // 有効なリンクのみ（空HTMLを除外）
   const validLinks = links.filter((l) => l.html.trim());
   if (validLinks.length === 0) return htmlContent;
 
-  // 全プレースホルダーを検索
   const placeholderRegex = /<p\s+class="affiliate-placeholder">[^<]*<\/p>/g;
   const matches = htmlContent.match(placeholderRegex);
   if (!matches) return htmlContent;
 
-  // 各プレースホルダーを順番にリンクで置換（リンクはループ使用）
   let linkIndex = 0;
   const result = htmlContent.replace(placeholderRegex, () => {
     const link = validLinks[linkIndex % validLinks.length];
@@ -42,11 +78,20 @@ export function replaceAffiliatePlaceholders(
 }
 
 /**
- * Cron実行時に環境変数からアフィリエイトリンクを取得する
- * 環境変数 AFFILIATE_LINKS に JSON配列で保存:
- * [{"themeId":"iryou-datsumo","html":"<a href='...'>...</a>"}, ...]
+ * Cron実行時に環境変数から提携先DBを取得し、テーマに合うリンクを返す
+ * 環境変数 AFFILIATE_DB にJSON配列で保存
  */
 export function getCronAffiliateLinks(themeId: string): AffiliateLink[] {
+  // 新形式: AFFILIATE_DB（提携先DB）
+  const dbRaw = process.env.AFFILIATE_DB;
+  if (dbRaw) {
+    try {
+      const partners: AffiliatePartner[] = JSON.parse(dbRaw);
+      return partnersToLinks(partners, themeId);
+    } catch {}
+  }
+
+  // 旧形式互換: AFFILIATE_LINKS
   const raw = process.env.AFFILIATE_LINKS;
   if (!raw) return [];
   try {
@@ -55,4 +100,11 @@ export function getCronAffiliateLinks(themeId: string): AffiliateLink[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * 新しい提携先IDを生成する
+ */
+export function generatePartnerId(): string {
+  return `aff_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }

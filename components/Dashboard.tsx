@@ -15,6 +15,20 @@ interface AffiliateLink {
   html: string;
 }
 
+type CommissionType = "cpa" | "cpc" | "percent";
+
+interface AffiliatePartner {
+  id: string;
+  asp: string;
+  programName: string;
+  themeIds: string[];
+  commissionType: CommissionType;
+  commissionValue: string;
+  priority: number;
+  html: string;
+  active: boolean;
+}
+
 interface HistoryItem {
   id: number;
   title: string;
@@ -93,23 +107,37 @@ export default function Dashboard() {
   const [wpStatus, setWpStatus] = useState<{ ok?: boolean; name?: string; error?: string } | null>(null);
   const [wpTesting, setWpTesting] = useState(false);
 
-  // Affiliate state
-  const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
-  const [affEditTheme, setAffEditTheme] = useState(THEMES[0].id);
-  const [affEditHtml, setAffEditHtml] = useState("");
+  // Affiliate partner DB state
+  const [partners, setPartners] = useState<AffiliatePartner[]>([]);
+  const [editingPartner, setEditingPartner] = useState<AffiliatePartner | null>(null);
+  const [affFilterTheme, setAffFilterTheme] = useState("all");
 
-  // Load affiliate links from localStorage
+  // New partner form defaults
+  const emptyPartner: AffiliatePartner = {
+    id: "", asp: "A8.net", programName: "", themeIds: [], commissionType: "cpa",
+    commissionValue: "", priority: 50, html: "", active: true,
+  };
+
+  // Load partners from localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("blogengine_affiliate_links");
-      if (saved) setAffiliateLinks(JSON.parse(saved));
+      const saved = localStorage.getItem("blogengine_partners");
+      if (saved) setPartners(JSON.parse(saved));
     } catch {}
   }, []);
 
-  // Save affiliate links to localStorage
-  function saveAffiliateLinks(links: AffiliateLink[]) {
-    setAffiliateLinks(links);
-    localStorage.setItem("blogengine_affiliate_links", JSON.stringify(links));
+  // Save partners to localStorage
+  function savePartners(list: AffiliatePartner[]) {
+    setPartners(list);
+    localStorage.setItem("blogengine_partners", JSON.stringify(list));
+  }
+
+  // Get affiliate links for a theme (sorted by priority)
+  function getLinksForTheme(themeId: string): AffiliateLink[] {
+    return partners
+      .filter((p) => p.active && p.themeIds.includes(themeId) && p.html.trim())
+      .sort((a, b) => b.priority - a.priority)
+      .map((p) => ({ themeId, html: p.html }));
   }
 
   // ---- Login ----
@@ -137,15 +165,16 @@ export default function Dashboard() {
         body.mode = "theme";
         body.themeId = selectedTheme.id;
         body.keyword = selectedKeyword;
-        // テーマに紐づくアフィリエイトリンクを送信
-        const themeLinks = affiliateLinks.filter((l) => l.themeId === selectedTheme.id);
+        // テーマに紐づく提携先を優先度順に自動選択
+        const themeLinks = getLinksForTheme(selectedTheme.id);
         if (themeLinks.length > 0) body.affiliateLinks = themeLinks;
       } else {
         body.mode = "product";
         body.products = products.filter((p) => p.trim());
         body.customKeyword = customKeyword || undefined;
-        // 商品モードでは全リンクを送信（マッチするものがあれば使う）
-        if (affiliateLinks.length > 0) body.affiliateLinks = affiliateLinks;
+        // 商品モードでは全有効リンクを送信
+        const allLinks = partners.filter((p) => p.active && p.html.trim()).map((p) => ({ themeId: p.themeIds[0] || "", html: p.html }));
+        if (allLinks.length > 0) body.affiliateLinks = allLinks;
       }
 
       const res = await fetch("/api/generate", {
@@ -537,83 +566,189 @@ export default function Dashboard() {
 
           {/* ====== AFFILIATE TAB ====== */}
           {activeTab === "affiliate" && (
-            <div style={{ maxWidth: 760 }}>
-              <p style={{ fontSize: 13, color: C.textDim, marginTop: 0, marginBottom: 20 }}>
-                テーマごとにアフィリエイトリンク（HTML）を登録すると、記事生成時にプレースホルダーを自動置換します。
-              </p>
+            <div style={{ maxWidth: 860 }}>
+              {/* Header stats */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 24 }}>
+                {[
+                  { label: "提携先数", value: partners.length, color: C.accent },
+                  { label: "有効", value: partners.filter((p) => p.active).length, color: C.green },
+                  { label: "テーマカバー", value: new Set(partners.flatMap((p) => p.themeIds)).size + "/" + THEMES.length, color: C.accentAlt },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: s.color }} />
+                    <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>{s.label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
 
-              {/* Add new link */}
-              <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 24 }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>リンクを追加</h3>
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>テーマ</label>
-                  <select
-                    value={affEditTheme}
-                    onChange={(e) => setAffEditTheme(e.target.value)}
-                    style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "12px 16px", color: C.text, fontSize: 14, outline: "none" }}
-                  >
-                    {THEMES.map((t) => (
-                      <option key={t.id} value={t.id}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>アフィリエイトHTML</label>
-                  <textarea
-                    value={affEditHtml}
-                    onChange={(e) => setAffEditHtml(e.target.value)}
-                    placeholder={'ASPから取得したアフィリエイトリンクHTML\n例: <a href="https://..." target="_blank">詳細はこちら</a>'}
-                    rows={4}
-                    style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "12px 16px", color: C.text, fontSize: 13, outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "monospace" }}
-                  />
-                </div>
+              {/* Add / Edit partner button */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>提携先データベース</h3>
                 <button
-                  onClick={() => {
-                    if (!affEditHtml.trim()) return;
-                    saveAffiliateLinks([...affiliateLinks, { themeId: affEditTheme, html: affEditHtml.trim() }]);
-                    setAffEditHtml("");
-                  }}
-                  style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: C.green, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                  onClick={() => setEditingPartner({ ...emptyPartner, id: `aff_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` })}
+                  style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: C.green, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
                 >
-                  追加
+                  + 提携先を追加
                 </button>
               </div>
 
-              {/* Registered links by theme */}
-              <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>登録済みリンク（{affiliateLinks.length}件）</h3>
-              {affiliateLinks.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted }}>
-                  <div style={{ fontSize: 14 }}>まだリンクが登録されていません</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>上のフォームからテーマごとにアフィリエイトリンクを追加してください</div>
+              {/* Filter by theme */}
+              <div style={{ marginBottom: 16 }}>
+                <select
+                  value={affFilterTheme}
+                  onChange={(e) => setAffFilterTheme(e.target.value)}
+                  style={{ background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 8, padding: "8px 14px", color: C.text, fontSize: 13, outline: "none" }}
+                >
+                  <option value="all">全テーマ表示</option>
+                  {THEMES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Partner list */}
+              {partners.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "50px 0", color: C.textMuted }}>
+                  <div style={{ fontSize: 14, marginBottom: 8 }}>提携先が登録されていません</div>
+                  <div style={{ fontSize: 12 }}>「+ 提携先を追加」からASPのアフィリエイトリンクを登録してください</div>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {THEMES.filter((t) => affiliateLinks.some((l) => l.themeId === t.id)).map((theme) => (
-                    <div key={theme.id} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px" }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: C.accent }}>{theme.label}</div>
-                      {affiliateLinks
-                        .map((link, idx) => ({ link, idx }))
-                        .filter(({ link }) => link.themeId === theme.id)
-                        .map(({ link, idx }) => (
-                          <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8, padding: "10px 12px", background: "#14141F", borderRadius: 8 }}>
-                            <code style={{ flex: 1, fontSize: 11, color: C.textDim, wordBreak: "break-all", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{link.html}</code>
-                            <button
-                              onClick={() => saveAffiliateLinks(affiliateLinks.filter((_, i) => i !== idx))}
-                              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.red}44`, background: "transparent", color: C.red, fontSize: 12, cursor: "pointer", flexShrink: 0 }}
-                            >
-                              削除
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  ))}
+                  {partners
+                    .filter((p) => affFilterTheme === "all" || p.themeIds.includes(affFilterTheme))
+                    .sort((a, b) => b.priority - a.priority)
+                    .map((partner) => (
+                      <div key={partner.id} style={{ background: C.bgCard, border: `1px solid ${partner.active ? C.border : C.red + "44"}`, borderRadius: 12, padding: "16px 20px", opacity: partner.active ? 1 : 0.6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: `${C.accentAlt}22`, color: C.accentAlt }}>{partner.asp}</span>
+                          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: partner.commissionType === "cpa" ? `${C.green}22` : `${C.orange}22`, color: partner.commissionType === "cpa" ? C.green : C.orange }}>
+                            {partner.commissionType === "cpa" ? "CPA" : partner.commissionType === "cpc" ? "CPC" : "物販%"} {partner.commissionValue}
+                          </span>
+                          <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: `${C.accent}22`, color: C.accent }}>優先度: {partner.priority}</span>
+                          {!partner.active && <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, fontWeight: 700, background: `${C.red}22`, color: C.red }}>停止中</span>}
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{partner.programName || "(名称未設定)"}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                          {partner.themeIds.map((tid) => {
+                            const theme = THEMES.find((t) => t.id === tid);
+                            return <span key={tid} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "#14141F", color: C.textDim }}>{theme?.label || tid}</span>;
+                          })}
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setEditingPartner({ ...partner })} style={{ padding: "6px 16px", borderRadius: 6, border: `1px solid ${C.accent}55`, background: "transparent", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>編集</button>
+                          <button onClick={() => savePartners(partners.map((p) => p.id === partner.id ? { ...p, active: !p.active } : p))} style={{ padding: "6px 16px", borderRadius: 6, border: `1px solid ${C.borderLight}`, background: "transparent", color: C.textDim, fontSize: 12, cursor: "pointer" }}>
+                            {partner.active ? "停止" : "有効化"}
+                          </button>
+                          <button onClick={() => { if (confirm("この提携先を削除しますか？")) savePartners(partners.filter((p) => p.id !== partner.id)); }} style={{ padding: "6px 16px", borderRadius: 6, border: `1px solid ${C.red}44`, background: "transparent", color: C.red, fontSize: 12, cursor: "pointer" }}>削除</button>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               )}
 
               {/* Info */}
               <div style={{ marginTop: 20, padding: "14px 18px", background: "#0F1A14", border: `1px solid ${C.green}33`, borderRadius: 12, fontSize: 12, color: C.green, lineHeight: 1.9 }}>
-                手動生成時: ダッシュボードに登録したリンクが自動挿入されます<br />
-                Cron自動生成時: Vercel環境変数 <code style={{ color: C.accentAlt }}>AFFILIATE_LINKS</code> にJSON形式で登録してください
+                記事生成時、テーマに紐づく提携先を優先度順に自動選択してプレースホルダーに挿入します<br />
+                Cron自動生成時: Vercel環境変数 <code style={{ color: C.accentAlt }}>AFFILIATE_DB</code> にJSON形式で登録してください
+              </div>
+            </div>
+          )}
+
+          {/* ====== PARTNER EDIT MODAL ====== */}
+          {editingPartner && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+              <div style={{ background: C.bgCard, border: `1px solid ${C.accent}44`, borderRadius: 16, width: "100%", maxWidth: 600, maxHeight: "90vh", overflow: "auto", padding: 28 }}>
+                <h3 style={{ margin: "0 0 20px", fontSize: 17, fontWeight: 800 }}>
+                  {partners.some((p) => p.id === editingPartner.id) ? "提携先を編集" : "提携先を追加"}
+                </h3>
+
+                {/* ASP */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>ASP</label>
+                  <select value={editingPartner.asp} onChange={(e) => setEditingPartner({ ...editingPartner, asp: e.target.value })} style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none" }}>
+                    {["A8.net", "afb", "もしもアフィリエイト", "アクセストレード", "バリューコマース", "TCSアフィリエイト", "Amazonアソシエイト", "楽天アフィリエイト", "その他"].map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Program name */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>プログラム名（クリニック名・商品名）</label>
+                  <input value={editingPartner.programName} onChange={(e) => setEditingPartner({ ...editingPartner, programName: e.target.value })} placeholder="例：レジーナクリニック" style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+
+                {/* Themes (multi-select via checkboxes) */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>対応テーマ（複数選択可）</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, background: "#14141F", borderRadius: 10, padding: 12, border: `1.5px solid ${C.borderLight}`, maxHeight: 160, overflow: "auto" }}>
+                    {THEMES.map((t) => {
+                      const checked = editingPartner.themeIds.includes(t.id);
+                      return (
+                        <button key={t.id} onClick={() => {
+                          const ids = checked ? editingPartner.themeIds.filter((id) => id !== t.id) : [...editingPartner.themeIds, t.id];
+                          setEditingPartner({ ...editingPartner, themeIds: ids });
+                        }} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${checked ? C.accent : C.borderLight}`, background: checked ? `${C.accent}22` : "transparent", color: checked ? C.accent : C.textDim, fontSize: 11, cursor: "pointer", fontWeight: checked ? 700 : 400 }}>
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Commission */}
+                <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>報酬タイプ</label>
+                    <select value={editingPartner.commissionType} onChange={(e) => setEditingPartner({ ...editingPartner, commissionType: e.target.value as CommissionType })} style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none" }}>
+                      <option value="cpa">CPA（成果報酬）</option>
+                      <option value="cpc">CPC（クリック報酬）</option>
+                      <option value="percent">物販%</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>報酬額</label>
+                    <input value={editingPartner.commissionValue} onChange={(e) => setEditingPartner({ ...editingPartner, commissionValue: e.target.value })} placeholder="例：5,000円 / 3%" style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                  </div>
+                </div>
+
+                {/* Priority */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>優先度（1〜100、高いほど記事内で優先的に使用）</label>
+                  <input type="number" min={1} max={100} value={editingPartner.priority} onChange={(e) => setEditingPartner({ ...editingPartner, priority: Number(e.target.value) || 50 })} style={{ width: 120, background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none" }} />
+                </div>
+
+                {/* HTML */}
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>アフィリエイトHTML（ASPからコピー）</label>
+                  <textarea value={editingPartner.html} onChange={(e) => setEditingPartner({ ...editingPartner, html: e.target.value })} placeholder={'<a href="https://px.a8.net/..." rel="nofollow">公式サイトはこちら</a>'} rows={5} style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "12px 14px", color: C.text, fontSize: 12, outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "monospace" }} />
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      if (!editingPartner.html.trim() || editingPartner.themeIds.length === 0) {
+                        alert("対応テーマとHTMLは必須です");
+                        return;
+                      }
+                      const exists = partners.some((p) => p.id === editingPartner.id);
+                      if (exists) {
+                        savePartners(partners.map((p) => p.id === editingPartner.id ? editingPartner : p));
+                      } else {
+                        savePartners([...partners, editingPartner]);
+                      }
+                      setEditingPartner(null);
+                    }}
+                    style={{ flex: 1, padding: "12px", borderRadius: 10, border: "none", background: `linear-gradient(135deg,${C.accent},${C.green})`, color: "#000", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+                  >
+                    保存
+                  </button>
+                  <button onClick={() => setEditingPartner(null)} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${C.borderLight}`, background: "transparent", color: C.textDim, fontSize: 14, cursor: "pointer" }}>
+                    キャンセル
+                  </button>
+                </div>
               </div>
             </div>
           )}
