@@ -111,7 +111,7 @@ export function getEnv(key: string, fallback?: string): string {
 export function getConfig() {
   return {
     anthropicApiKey: getEnv("ANTHROPIC_API_KEY"),
-    wpSiteUrl: getEnv("WP_SITE_URL"),
+    wpSiteUrl: getEnv("WP_URL"),
     wpUsername: getEnv("WP_USERNAME"),
     wpAppPassword: getEnv("WP_APP_PASSWORD"),
     wpDefaultStatus: getEnv("WP_DEFAULT_STATUS", "draft") as "draft" | "publish",
