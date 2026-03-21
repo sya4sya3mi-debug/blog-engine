@@ -529,7 +529,7 @@ export default function Dashboard() {
                   {[
                     { key: "APP_PASSWORD", desc: "ダッシュボードのログインパスワード" },
                     { key: "ANTHROPIC_API_KEY", desc: "Claude APIキー" },
-                    { key: "WP_SITE_URL", desc: "WordPressサイトURL" },
+                    { key: "WP_URL", desc: "WordPressサイトURL" },
                     { key: "WP_USERNAME", desc: "WPユーザー名" },
                     { key: "WP_APP_PASSWORD", desc: "WP Application Password" },
                     { key: "WP_DEFAULT_STATUS", desc: "draft or publish" },
