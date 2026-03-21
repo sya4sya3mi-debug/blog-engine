@@ -6,6 +6,7 @@ interface WPPostPayload {
   title: string;
   content: string;
   status: "draft" | "publish";
+  slug?: string;
   categories?: number[];
   tags?: number[];
   meta?: Record<string, string>;
@@ -71,6 +72,34 @@ export class WordPressClient {
       body: JSON.stringify({ name, slug }),
     });
     return created.id;
+  }
+
+  /** タグをスラッグで検索、なければ作成 */
+  async findOrCreateTag(name: string): Promise<number> {
+    const slug = encodeURIComponent(name);
+    const tags = await this.request<{ id: number }[]>(`/tags?search=${slug}`);
+    const exact = tags.find((t: any) => t.name === name);
+    if (exact) return exact.id;
+
+    const created = await this.request<{ id: number }>("/tags", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    return created.id;
+  }
+
+  /** 複数タグを一括で検索/作成 */
+  async findOrCreateTags(names: string[]): Promise<number[]> {
+    const ids: number[] = [];
+    for (const name of names) {
+      try {
+        const id = await this.findOrCreateTag(name);
+        ids.push(id);
+      } catch {
+        // タグ作成失敗は無視して続行
+      }
+    }
+    return ids;
   }
 
   /** 接続テスト */

@@ -50,13 +50,20 @@ export async function GET(req: NextRequest) {
 
     const categoryId = await wp.findOrCreateCategory(theme.label, theme.id);
 
+    // タグを自動作成
+    const tagIds = article.tags.length > 0 ? await wp.findOrCreateTags(article.tags) : [];
+
     const post = await wp.createPost({
       title: article.title,
       content: article.htmlContent,
+      slug: article.slug,
       status: config.wpDefaultStatus,
       categories: [categoryId],
+      tags: tagIds,
       meta: {
         _seo_description: article.metaDescription,
+        _yoast_wpseo_focuskw: article.focusKeyword,
+        _yoast_wpseo_metadesc: article.metaDescription,
       },
     });
 

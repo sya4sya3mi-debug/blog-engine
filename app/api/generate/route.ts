@@ -79,11 +79,21 @@ export async function POST(req: NextRequest) {
 
         if (postToWP) {
           const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
+
+          // タグを自動作成
+          const tagIds = article.tags.length > 0 ? await wp.findOrCreateTags(article.tags) : [];
+
           const post = await wp.createPost({
             title: article.title,
             content: article.htmlContent,
+            slug: article.slug,
             status: config.wpDefaultStatus,
-            meta: { _seo_description: article.metaDescription },
+            tags: tagIds,
+            meta: {
+              _seo_description: article.metaDescription,
+              _yoast_wpseo_focuskw: article.focusKeyword,
+              _yoast_wpseo_metadesc: article.metaDescription,
+            },
           });
           wpResult = { postId: post.id, status: post.status, link: post.link };
         }

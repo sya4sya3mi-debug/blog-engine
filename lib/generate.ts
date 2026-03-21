@@ -12,6 +12,10 @@ export interface GeneratedArticle {
   htmlContent: string;
   keyword: string;
   themeLabel: string;
+  slug: string;
+  focusKeyword: string;
+  tags: string[];
+  faqSchema: { question: string; answer: string }[];
 }
 
 export type { TargetAge } from "./config";
@@ -143,15 +147,30 @@ ${COMPLIANCE_BLOCK}
 {
   "title": "【${CURRENT_YEAR}年】〇〇を徹底比較",
   "metaDescription": "120文字以内のSEOメタディスクリプション",
+  "slug": "keyword-based-seo-slug-${CURRENT_YEAR}",
+  "focusKeyword": "メインのSEOキーワード1つ",
+  "tags": ["関連タグ1", "関連タグ2", "関連タグ3"],
+  "faq": [
+    {"question": "よくある質問1", "answer": "回答1"},
+    {"question": "よくある質問2", "answer": "回答2"},
+    {"question": "よくある質問3", "answer": "回答3"}
+  ],
   "htmlContent": "HTML本文"
 }
 \`\`\`
+
+## SEO最適化の要件
+- slug: キーワードをローマ字/英語でハイフン区切りにする（例: iryou-datsumo-hikaku-${CURRENT_YEAR}）
+- focusKeyword: 記事のメインキーワード1つ（タイトルとh2に含まれる語）
+- tags: 記事に関連するSEOタグを3〜5個（サブキーワードやカテゴリ）
+- faq: 記事末尾のFAQから3〜5問を抽出（Google FAQリッチスニペット用）
 
 ## htmlContent の要件
 - HTML構造：<h2>大見出し / <h3>小見出し / <p>段落 / <table>比較表 / <ul><li>リスト
 - 文字数：2000〜4000字程度
 - 記事冒頭に「<p class="pr-notice">※ この記事にはアフィリエイト広告が含まれています</p>」を必ず含める
 - CTA配置：結論直後 / 比較表直後 / FAQ末尾の3箇所に「<p class="affiliate-placeholder">【アフィリエイトリンク挿入予定】</p>」
+- 記事末尾にFAQセクション（<h2>よくある質問</h2>）を必ず含め、<h3>で質問、<p>で回答を記述
 - 筆者の体験談を自然に2〜3箇所織り交ぜる（上記ペルソナに沿って）
 - 料金・回数は「目安」「一般的には」と但し書き必須
 - 自然な日本語で、AIっぽさを排除した読みやすい文体`;
@@ -185,9 +204,23 @@ ${COMPLIANCE_BLOCK}
 {
   "title": "【${CURRENT_YEAR}年】〇〇を徹底比較",
   "metaDescription": "120文字以内のSEOメタディスクリプション",
+  "slug": "product-comparison-seo-slug-${CURRENT_YEAR}",
+  "focusKeyword": "メインのSEOキーワード1つ",
+  "tags": ["関連タグ1", "関連タグ2", "関連タグ3"],
+  "faq": [
+    {"question": "よくある質問1", "answer": "回答1"},
+    {"question": "よくある質問2", "answer": "回答2"},
+    {"question": "よくある質問3", "answer": "回答3"}
+  ],
   "htmlContent": "HTML本文"
 }
 \`\`\`
+
+## SEO最適化の要件
+- slug: 商品名やキーワードをローマ字/英語でハイフン区切りにする
+- focusKeyword: 記事のメインキーワード1つ（タイトルとh2に含まれる語）
+- tags: 記事に関連するSEOタグを3〜5個（商品名、カテゴリ、特徴など）
+- faq: 記事末尾のFAQから3〜5問を抽出（Google FAQリッチスニペット用）
 
 ## htmlContent の要件
 - HTML構造：<h2>大見出し / <h3>小見出し / <p>段落 / <table>比較表 / <ul><li>リスト
@@ -196,13 +229,24 @@ ${COMPLIANCE_BLOCK}
 - 比較表は価格帯（目安）・特徴・向いている人を含む
 - 各商品を<h3>で個別レビュー（メリット・注意点を公平に）
 - 各商品に「<p class="affiliate-placeholder">【アフィリエイトリンク挿入予定：${"{商品名}"}】</p>」を含める
+- 記事末尾にFAQセクション（<h2>よくある質問</h2>）を必ず含め、<h3>で質問、<p>で回答を記述
 - まとめで「こんな方にはこの商品/サービス」という提案型にする
 - 筆者の体験談を自然に2〜3箇所織り交ぜる
 - 料金は「目安」「一般的には」と但し書き必須
 - 自然な日本語で、AIっぽさを排除した読みやすい文体`;
 }
 
-function extractJSON(text: string): { title: string; metaDescription: string; htmlContent: string } {
+interface ParsedArticle {
+  title: string;
+  metaDescription: string;
+  htmlContent: string;
+  slug?: string;
+  focusKeyword?: string;
+  tags?: string[];
+  faq?: { question: string; answer: string }[];
+}
+
+function extractJSON(text: string): ParsedArticle {
   try {
     // ```json ... ``` ブロックから抽出
     const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
@@ -241,6 +285,62 @@ async function callClaude(apiKey: string, prompt: string) {
   return text;
 }
 
+/** FAQ構造化データ（JSON-LD）を生成してHTMLに埋め込む */
+function buildFaqSchema(faq: { question: string; answer: string }[]): string {
+  if (!faq || faq.length === 0) return "";
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faq.map((item) => ({
+      "@type": "Question",
+      "name": item.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": item.answer,
+      },
+    })),
+  };
+  return `<script type="application/ld+json">${JSON.stringify(schema)}</script>`;
+}
+
+/** Article構造化データ（JSON-LD）を生成 */
+function buildArticleSchema(title: string, description: string, keyword: string): string {
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": title,
+    "description": description,
+    "keywords": keyword,
+    "author": { "@type": "Person", "name": "美容トレンドノート編集部" },
+    "publisher": { "@type": "Organization", "name": "美容トレンドノート" },
+    "datePublished": new Date().toISOString().split("T")[0],
+    "dateModified": new Date().toISOString().split("T")[0],
+  };
+  return `<script type="application/ld+json">${JSON.stringify(schema)}</script>`;
+}
+
+/** パース結果からGeneratedArticleを組み立てる（構造化データ埋め込み） */
+function buildGeneratedArticle(parsed: ParsedArticle, keyword: string, themeLabel: string): GeneratedArticle {
+  const faq = parsed.faq || [];
+  const focusKeyword = parsed.focusKeyword || keyword;
+
+  // 構造化データをHTMLに埋め込む
+  const schemaHtml = buildArticleSchema(parsed.title, parsed.metaDescription, focusKeyword) + buildFaqSchema(faq);
+  const htmlContent = parsed.htmlContent + schemaHtml;
+
+  return {
+    title: parsed.title,
+    metaDescription: parsed.metaDescription,
+    htmlContent,
+    keyword,
+    themeLabel,
+    slug: parsed.slug || keyword.replace(/\s+/g, "-").toLowerCase(),
+    focusKeyword,
+    tags: parsed.tags || [],
+    faqSchema: faq,
+  };
+}
+
 /** 自動生成（Cronテーマローテーション用） */
 export async function generateArticle(
   apiKey: string,
@@ -252,14 +352,7 @@ export async function generateArticle(
   const prompt = buildAutoPrompt(keyword, theme, genreName, targetAge);
   const responseText = await callClaude(apiKey, prompt);
   const parsed = extractJSON(responseText);
-
-  return {
-    title: parsed.title,
-    metaDescription: parsed.metaDescription,
-    htmlContent: parsed.htmlContent,
-    keyword,
-    themeLabel: theme.label,
-  };
+  return buildGeneratedArticle(parsed, keyword, theme.label);
 }
 
 /** 商品指定生成（手動 / 複数商品対応） */
@@ -273,12 +366,5 @@ export async function generateProductArticle(
   const prompt = buildProductPrompt(products, genreName, targetAge, customKeyword);
   const responseText = await callClaude(apiKey, prompt);
   const parsed = extractJSON(responseText);
-
-  return {
-    title: parsed.title,
-    metaDescription: parsed.metaDescription,
-    htmlContent: parsed.htmlContent,
-    keyword: customKeyword || products.join(" / "),
-    themeLabel: "商品レビュー",
-  };
+  return buildGeneratedArticle(parsed, customKeyword || products.join(" / "), "商品レビュー");
 }
