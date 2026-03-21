@@ -8,6 +8,7 @@ import { SubTheme, TargetAge } from "./config";
 
 export interface GeneratedArticle {
   title: string;
+  seoTitle: string;
   metaDescription: string;
   htmlContent: string;
   keyword: string;
@@ -16,6 +17,7 @@ export interface GeneratedArticle {
   focusKeyword: string;
   tags: string[];
   faqSchema: { question: string; answer: string }[];
+  products: { name: string; description?: string; brand?: string; price?: number; url?: string; rating?: number; reviewCount?: number }[];
 }
 
 export type { TargetAge } from "./config";
@@ -155,6 +157,10 @@ ${COMPLIANCE_BLOCK}
     {"question": "よくある質問2", "answer": "回答2"},
     {"question": "よくある質問3", "answer": "回答3"}
   ],
+  "products": [
+    {"name": "商品名1", "description": "商品の特徴を1文で", "brand": "ブランド名", "price": 3980, "rating": 4.5, "reviewCount": 120},
+    {"name": "商品名2", "description": "商品の特徴を1文で", "brand": "ブランド名", "price": 2980, "rating": 4.2, "reviewCount": 85}
+  ],
   "htmlContent": "HTML本文"
 }
 \`\`\`
@@ -164,6 +170,8 @@ ${COMPLIANCE_BLOCK}
 - focusKeyword: 記事のメインキーワード1つ（タイトルとh2に含まれる語）
 - tags: 記事に関連するSEOタグを3〜5個（サブキーワードやカテゴリ）
 - faq: 記事末尾のFAQから3〜5問を抽出（Google FAQリッチスニペット用）
+- products: 記事内で紹介した商品のリスト（Google商品リッチリザルト用、3〜5件）
+  - name: 商品名、brand: ブランド名、price: 参考価格（数値）、rating: 評価（5点満点）、reviewCount: レビュー件数
 
 ## htmlContent の要件
 - HTML構造：<h2>大見出し / <h3>小見出し / <p>段落 / <table>比較表 / <ul><li>リスト
@@ -212,6 +220,10 @@ ${COMPLIANCE_BLOCK}
     {"question": "よくある質問2", "answer": "回答2"},
     {"question": "よくある質問3", "answer": "回答3"}
   ],
+  "products": [
+    {"name": "商品名1", "description": "商品の特徴を1文で", "brand": "ブランド名", "price": 3980, "rating": 4.5, "reviewCount": 120},
+    {"name": "商品名2", "description": "商品の特徴を1文で", "brand": "ブランド名", "price": 2980, "rating": 4.2, "reviewCount": 85}
+  ],
   "htmlContent": "HTML本文"
 }
 \`\`\`
@@ -221,6 +233,8 @@ ${COMPLIANCE_BLOCK}
 - focusKeyword: 記事のメインキーワード1つ（タイトルとh2に含まれる語）
 - tags: 記事に関連するSEOタグを3〜5個（商品名、カテゴリ、特徴など）
 - faq: 記事末尾のFAQから3〜5問を抽出（Google FAQリッチスニペット用）
+- products: 記事で紹介した商品のリスト（Google商品リッチリザルト用）
+  - name: 商品名、brand: ブランド名、price: 参考価格（数値）、rating: 評価（5点満点）、reviewCount: レビュー件数
 
 ## htmlContent の要件
 - HTML構造：<h2>大見出し / <h3>小見出し / <p>段落 / <table>比較表 / <ul><li>リスト
@@ -236,6 +250,16 @@ ${COMPLIANCE_BLOCK}
 - 自然な日本語で、AIっぽさを排除した読みやすい文体`;
 }
 
+interface ParsedProduct {
+  name: string;
+  description?: string;
+  brand?: string;
+  price?: number;
+  url?: string;
+  rating?: number;
+  reviewCount?: number;
+}
+
 interface ParsedArticle {
   title: string;
   metaDescription: string;
@@ -244,6 +268,7 @@ interface ParsedArticle {
   focusKeyword?: string;
   tags?: string[];
   faq?: { question: string; answer: string }[];
+  products?: ParsedProduct[];
 }
 
 function extractJSON(text: string): ParsedArticle {
@@ -380,17 +405,85 @@ function buildArticleSchema(title: string, description: string, keyword: string)
   return `<script type="application/ld+json">${JSON.stringify(schema)}</script>`;
 }
 
+/** Product構造化データ（JSON-LD）を生成 — Google商品リッチリザルト対応 */
+function buildProductSchema(products: ParsedProduct[]): string {
+  if (!products || products.length === 0) return "";
+
+  const schemas = products.map((p) => ({
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": p.name,
+    "description": p.description || "",
+    ...(p.brand ? { "brand": { "@type": "Brand", "name": p.brand } } : {}),
+    ...(p.price ? {
+      "offers": {
+        "@type": "Offer",
+        "price": p.price,
+        "priceCurrency": "JPY",
+        "availability": "https://schema.org/InStock",
+        "url": p.url || "",
+      },
+    } : {}),
+    ...(p.rating ? {
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": p.rating,
+        "bestRating": "5",
+        "reviewCount": p.reviewCount || "1",
+      },
+    } : {}),
+  }));
+
+  return schemas
+    .map((s) => `<script type="application/ld+json">${JSON.stringify(s)}</script>`)
+    .join("\n");
+}
+
+/** ItemList構造化データ — おすすめランキング系記事向け */
+function buildItemListSchema(title: string, products: ParsedProduct[]): string {
+  if (!products || products.length === 0) return "";
+
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": title,
+    "itemListElement": products.map((p, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "name": p.name,
+      ...(p.url ? { "url": p.url } : {}),
+    })),
+  };
+  return `<script type="application/ld+json">${JSON.stringify(schema)}</script>`;
+}
+
+/** SEOタイトルを生成（Yoast用 — 60文字以内 + ブランド名） */
+function buildSeoTitle(title: string): string {
+  // 長すぎるタイトルを60文字以内に切り詰める
+  const brandSuffix = " | 美容トレンドノート";
+  const maxLen = 60 - brandSuffix.length;
+  const trimmed = title.length > maxLen ? title.substring(0, maxLen) + "…" : title;
+  return trimmed + brandSuffix;
+}
+
 /** パース結果からGeneratedArticleを組み立てる（構造化データ埋め込み） */
 function buildGeneratedArticle(parsed: ParsedArticle, keyword: string, themeLabel: string): GeneratedArticle {
   const faq = parsed.faq || [];
+  const products = parsed.products || [];
   const focusKeyword = parsed.focusKeyword || keyword;
+  const seoTitle = buildSeoTitle(parsed.title);
 
   // 構造化データをHTMLに埋め込む
-  const schemaHtml = buildArticleSchema(parsed.title, parsed.metaDescription, focusKeyword) + buildFaqSchema(faq);
+  let schemaHtml = buildArticleSchema(parsed.title, parsed.metaDescription, focusKeyword);
+  schemaHtml += buildFaqSchema(faq);
+  schemaHtml += buildProductSchema(products);
+  schemaHtml += buildItemListSchema(parsed.title, products);
+
   const htmlContent = parsed.htmlContent + schemaHtml;
 
   return {
     title: parsed.title,
+    seoTitle,
     metaDescription: parsed.metaDescription,
     htmlContent,
     keyword,
@@ -399,6 +492,7 @@ function buildGeneratedArticle(parsed: ParsedArticle, keyword: string, themeLabe
     focusKeyword,
     tags: parsed.tags || [],
     faqSchema: faq,
+    products,
   };
 }
 

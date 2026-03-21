@@ -25,7 +25,10 @@ export class WordPressClient {
 
   constructor(siteUrl: string, username: string, appPassword: string) {
     this.baseUrl = siteUrl.replace(/\/+$/, "");
-    this.authHeader = "Basic " + Buffer.from(`${username}:${appPassword}`).toString("base64");
+    // Edge Runtime対応: btoa()を使用（Buffer.fromはEdgeで使えない場合がある）
+    this.authHeader = "Basic " + (typeof btoa !== "undefined"
+      ? btoa(`${username}:${appPassword}`)
+      : Buffer.from(`${username}:${appPassword}`).toString("base64"));
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

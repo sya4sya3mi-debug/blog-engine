@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
             tags: tagIds,
             meta: {
               _seo_description: article.metaDescription,
+              _yoast_wpseo_title: article.seoTitle,
               _yoast_wpseo_focuskw: article.focusKeyword,
               _yoast_wpseo_metadesc: article.metaDescription,
             },
