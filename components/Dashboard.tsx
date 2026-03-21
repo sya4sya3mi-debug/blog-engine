@@ -182,7 +182,9 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      // ストリーミングレスポンス対応: ハートビート(スペース)を除去してJSONパース
+      const rawText = await res.text();
+      const data = JSON.parse(rawText.trim());
 
       if (data.status === "success") {
         const item: HistoryItem = {

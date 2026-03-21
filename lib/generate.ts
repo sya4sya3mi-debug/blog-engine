@@ -203,11 +203,21 @@ ${COMPLIANCE_BLOCK}
 }
 
 function extractJSON(text: string): { title: string; metaDescription: string; htmlContent: string } {
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    return JSON.parse(jsonMatch[1].trim());
+  try {
+    // ```json ... ``` ブロックから抽出
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[1].trim());
+    }
+    // { から始まるJSONを探す
+    const braceMatch = text.match(/\{[\s\S]*\}/);
+    if (braceMatch) {
+      return JSON.parse(braceMatch[0]);
+    }
+    return JSON.parse(text.trim());
+  } catch (e) {
+    throw new Error(`Claude APIのレスポンスをJSONとして解析できませんでした。レスポンス先頭: ${text.slice(0, 200)}`);
   }
-  return JSON.parse(text.trim());
 }
 
 async function callClaude(apiKey: string, prompt: string) {
@@ -215,14 +225,20 @@ async function callClaude(apiKey: string, prompt: string) {
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
+    max_tokens: 8096,
     messages: [{ role: "user", content: prompt }],
   });
 
-  return message.content
+  const text = message.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
     .map((block) => block.text)
     .join("");
+
+  if (!text) {
+    throw new Error("Claude APIから空のレスポンスが返されました");
+  }
+
+  return text;
 }
 
 /** 自動生成（Cronテーマローテーション用） */
