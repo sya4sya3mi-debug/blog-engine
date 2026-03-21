@@ -270,7 +270,7 @@ async function callClaude(apiKey: string, prompt: string) {
   // ストリーミングで受信（Vercel Hobby の関数タイムアウト対策）
   const stream = client.messages.stream({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 8096,
+    max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
   });
 

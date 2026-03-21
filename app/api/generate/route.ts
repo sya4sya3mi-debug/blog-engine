@@ -1,6 +1,6 @@
 // ==========================================
 // BlogEngine V2 - Manual Generate Endpoint
-// ストリーミングレスポンスでVercel Hobbyタイムアウト回避
+// Edge Runtime + ストリーミングでVercel Hobbyタイムアウト回避
 // ==========================================
 
 import { NextRequest } from "next/server";
@@ -9,7 +9,8 @@ import { generateArticle, generateProductArticle, TargetAge } from "@/lib/genera
 import { WordPressClient } from "@/lib/wordpress";
 import { AffiliateLink, replaceAffiliatePlaceholders } from "@/lib/affiliate";
 
-export const maxDuration = 60;
+// Edge Runtimeを使用（Hobby: 25秒 → ストリーミングで延長可能）
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   const config = getConfig();
@@ -36,14 +37,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ストリーミングレスポンスでタイムアウト回避
+  // ストリーミングレスポンス
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      // 処理中に定期的にハートビートを送信してコネクション維持
+      // 3秒おきにハートビートでコネクション維持
       const heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode(" "));
-      }, 5000);
+        try { controller.enqueue(encoder.encode(" ")); } catch {}
+      }, 3000);
 
       try {
         let article;
@@ -79,10 +80,7 @@ export async function POST(req: NextRequest) {
 
         if (postToWP) {
           const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
-
-          // タグを自動作成
           const tagIds = article.tags.length > 0 ? await wp.findOrCreateTags(article.tags) : [];
-
           const post = await wp.createPost({
             title: article.title,
             content: article.htmlContent,

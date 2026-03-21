@@ -9,7 +9,7 @@ import { generateArticle } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
 import { replaceAffiliatePlaceholders, getCronAffiliateLinks } from "@/lib/affiliate";
 
-export const maxDuration = 60; // Vercel function timeout
+export const runtime = "edge"; // Edge Runtime（Hobby: 25秒 → ストリーミング延長可能）
 
 export async function GET(req: NextRequest) {
   // Vercel Cron認証
