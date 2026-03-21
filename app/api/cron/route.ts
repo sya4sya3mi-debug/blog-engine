@@ -1,10 +1,10 @@
 // ==========================================
 // BlogEngine V2 - Cron Endpoint
-// 毎時実行 → 今日の投稿時刻に一致したら記事生成＆WP投稿
+// 毎日1回実行（UTC 0:00 = JST 9:00）→ 記事生成＆WP投稿
 // ==========================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getConfig, ALL_GENRES, getTodaysTheme, shouldRunNow } from "@/lib/config";
+import { getConfig, ALL_GENRES, getTodaysTheme } from "@/lib/config";
 import { generateArticle } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
 
@@ -22,19 +22,7 @@ export async function GET(req: NextRequest) {
   // 今日の日付（JST）
   const now = new Date();
   const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const dateStr = jstDate.toISOString().split("T")[0]; // "2026-03-21"
-  const utcHour = now.getUTCHours();
-
-  // 今の時刻が投稿予定時刻か判定
-  if (!shouldRunNow(dateStr, utcHour)) {
-    return NextResponse.json({
-      status: "skipped",
-      message: "今回の時刻は投稿予定ではありません",
-      date: dateStr,
-      utcHour,
-      jstHour: (utcHour + 9) % 24,
-    });
-  }
+  const dateStr = jstDate.toISOString().split("T")[0];
 
   // アクティブジャンルを取得
   const genre = ALL_GENRES.find((g) => g.id === config.activeGenre);
@@ -42,7 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `ジャンル '${config.activeGenre}' が見つかりません` }, { status: 400 });
   }
 
-  // 今日のテーマ＆キーワードを決定
+  // 今日のテーマ＆キーワードを決定（日付ベースの決定論的ローテーション）
   const { theme, keyword } = getTodaysTheme(genre, dateStr);
 
   try {
