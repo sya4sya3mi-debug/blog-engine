@@ -1,13 +1,19 @@
 // ==========================================
 // BlogEngine V2 - Rakuten Product Search Endpoint
-// 楽天商品検索 → アフィリエイトリンク自動取得
+// 楽天商品検索 → 収益最適化アフィリエイトリンク自動取得
 // ==========================================
 
 import { NextRequest, NextResponse } from "next/server";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
 
 export async function POST(req: NextRequest) {
-  const { keyword, hits } = (await req.json()) as { keyword: string; hits?: number };
+  const { keyword, hits, themeId, minPrice, maxPrice } = (await req.json()) as {
+    keyword: string;
+    hits?: number;
+    themeId?: string;
+    minPrice?: number;
+    maxPrice?: number;
+  };
 
   const rakutenAppId = process.env.RAKUTEN_APP_ID;
   const rakutenAccessKey = process.env.RAKUTEN_ACCESS_KEY;
@@ -25,7 +31,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const products = await searchRakutenProducts(rakutenAppId, rakutenAffiliateId, keyword, hits || 5, rakutenAccessKey);
+    const products = await searchRakutenProducts(
+      rakutenAppId,
+      rakutenAffiliateId,
+      keyword,
+      hits || 10,
+      rakutenAccessKey,
+      {
+        themeId,
+        minPrice,
+        maxPrice,
+        maxResults: hits || 10,
+        expandKeywords: !!themeId,
+      },
+    );
 
     const results = products.map((p) => ({
       ...p,

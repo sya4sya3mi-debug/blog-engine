@@ -267,16 +267,19 @@ function extractJSON(text: string): ParsedArticle {
 async function callClaude(apiKey: string, prompt: string) {
   const client = new Anthropic({ apiKey });
 
-  const message = await client.messages.create({
+  // ストリーミングで受信（Vercel Hobby の関数タイムアウト対策）
+  const stream = client.messages.stream({
     model: "claude-sonnet-4-20250514",
     max_tokens: 8096,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("");
+  let text = "";
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      text += event.delta.text;
+    }
+  }
 
   if (!text) {
     throw new Error("Claude APIから空のレスポンスが返されました");

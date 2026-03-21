@@ -188,10 +188,20 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(180000), // 3分タイムアウト
       });
       // ストリーミングレスポンス対応: ハートビート(スペース)を除去してJSONパース
       const rawText = await res.text();
-      const data = JSON.parse(rawText.trim());
+      const cleaned = rawText.trim();
+      if (!cleaned) {
+        throw new Error("サーバーから空のレスポンスが返されました。時間をおいて再度お試しください。");
+      }
+      // ハートビートスペースを除去してJSON部分だけ抽出
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}$/);
+      if (!jsonMatch) {
+        throw new Error("レスポンスの解析に失敗しました: " + cleaned.substring(0, 100));
+      }
+      const data = JSON.parse(jsonMatch[0]);
 
       if (data.status === "success") {
         const item: HistoryItem = {
@@ -227,7 +237,7 @@ export default function Dashboard() {
       const res = await fetch("/api/rakuten-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: rakutenKeyword, hits: 5 }),
+        body: JSON.stringify({ keyword: rakutenKeyword, hits: 10, themeId: rakutenTheme }),
       });
       const data = await res.json();
       if (data.status === "success") {
@@ -681,7 +691,7 @@ export default function Dashboard() {
 
               {/* Rakuten search */}
               <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginTop: 24 }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#bf0000" }}>楽天商品を検索して自動登録</h3>
+                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#bf0000" }}>🔍 収益最適化 楽天商品検索</h3>
                 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                   <input
                     value={rakutenKeyword}
@@ -705,15 +715,21 @@ export default function Dashboard() {
 
                 {rakutenResults.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8, padding: "6px 10px", background: "#1A1A28", borderRadius: 6 }}>
+                      収益スコア順に表示 | テーマ連動キーワード展開 | 高単価×高評価×売れ筋 を優先
+                    </div>
                     {rakutenResults.map((product, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#14141F", borderRadius: 10 }}>
-                        {product.imageUrl && <img src={product.imageUrl} alt="" style={{ width: 48, height: 48, objectFit: "contain", borderRadius: 4, flexShrink: 0 }} />}
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#14141F", borderRadius: 10, border: i === 0 ? "1px solid #bf000044" : "none" }}>
+                        {product.imageUrl && <img src={product.imageUrl} alt="" style={{ width: 56, height: 56, objectFit: "contain", borderRadius: 4, flexShrink: 0 }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{product.itemName}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i === 0 && <span style={{ color: "#bf0000", marginRight: 4 }}>TOP</span>}{product.itemName}</div>
                           <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
                             <span style={{ color: "#bf0000", fontWeight: 700 }}>¥{product.itemPrice.toLocaleString()}</span>
                             <span style={{ marginLeft: 8 }}>{product.shopName}</span>
                             {product.reviewCount > 0 && <span style={{ marginLeft: 8 }}>★{product.reviewAverage} ({product.reviewCount}件)</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: C.accent, marginTop: 2 }}>
+                            収益スコア: {product.profitScore?.toFixed(1) ?? "-"} | 推定報酬: ¥{product.estimatedCommission ?? "-"}/件
                           </div>
                         </div>
                         <button
