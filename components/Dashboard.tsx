@@ -10,6 +10,11 @@ interface SubTheme {
   keywords: string[];
 }
 
+interface AffiliateLink {
+  themeId: string;
+  html: string;
+}
+
 interface HistoryItem {
   id: number;
   title: string;
@@ -88,6 +93,25 @@ export default function Dashboard() {
   const [wpStatus, setWpStatus] = useState<{ ok?: boolean; name?: string; error?: string } | null>(null);
   const [wpTesting, setWpTesting] = useState(false);
 
+  // Affiliate state
+  const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
+  const [affEditTheme, setAffEditTheme] = useState(THEMES[0].id);
+  const [affEditHtml, setAffEditHtml] = useState("");
+
+  // Load affiliate links from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("blogengine_affiliate_links");
+      if (saved) setAffiliateLinks(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  // Save affiliate links to localStorage
+  function saveAffiliateLinks(links: AffiliateLink[]) {
+    setAffiliateLinks(links);
+    localStorage.setItem("blogengine_affiliate_links", JSON.stringify(links));
+  }
+
   // ---- Login ----
   async function handleLogin() {
     setLoginError("");
@@ -113,10 +137,15 @@ export default function Dashboard() {
         body.mode = "theme";
         body.themeId = selectedTheme.id;
         body.keyword = selectedKeyword;
+        // テーマに紐づくアフィリエイトリンクを送信
+        const themeLinks = affiliateLinks.filter((l) => l.themeId === selectedTheme.id);
+        if (themeLinks.length > 0) body.affiliateLinks = themeLinks;
       } else {
         body.mode = "product";
         body.products = products.filter((p) => p.trim());
         body.customKeyword = customKeyword || undefined;
+        // 商品モードでは全リンクを送信（マッチするものがあれば使う）
+        if (affiliateLinks.length > 0) body.affiliateLinks = affiliateLinks;
       }
 
       const res = await fetch("/api/generate", {
@@ -206,6 +235,7 @@ export default function Dashboard() {
     { id: "dashboard", label: "ダッシュボード", icon: "◈" },
     { id: "generate", label: "記事生成", icon: "✦" },
     { id: "history", label: "生成履歴", icon: "≡" },
+    { id: "affiliate", label: "アフィリエイト", icon: "¥" },
     { id: "themes", label: "テーマ一覧", icon: "◎" },
     { id: "settings", label: "設定", icon: "⚙" },
   ];
@@ -502,6 +532,89 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ====== AFFILIATE TAB ====== */}
+          {activeTab === "affiliate" && (
+            <div style={{ maxWidth: 760 }}>
+              <p style={{ fontSize: 13, color: C.textDim, marginTop: 0, marginBottom: 20 }}>
+                テーマごとにアフィリエイトリンク（HTML）を登録すると、記事生成時にプレースホルダーを自動置換します。
+              </p>
+
+              {/* Add new link */}
+              <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 24 }}>
+                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>リンクを追加</h3>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>テーマ</label>
+                  <select
+                    value={affEditTheme}
+                    onChange={(e) => setAffEditTheme(e.target.value)}
+                    style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "12px 16px", color: C.text, fontSize: 14, outline: "none" }}
+                  >
+                    {THEMES.map((t) => (
+                      <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>アフィリエイトHTML</label>
+                  <textarea
+                    value={affEditHtml}
+                    onChange={(e) => setAffEditHtml(e.target.value)}
+                    placeholder={'ASPから取得したアフィリエイトリンクHTML\n例: <a href="https://..." target="_blank">詳細はこちら</a>'}
+                    rows={4}
+                    style={{ width: "100%", background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "12px 16px", color: C.text, fontSize: 13, outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "monospace" }}
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (!affEditHtml.trim()) return;
+                    saveAffiliateLinks([...affiliateLinks, { themeId: affEditTheme, html: affEditHtml.trim() }]);
+                    setAffEditHtml("");
+                  }}
+                  style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: C.green, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                >
+                  追加
+                </button>
+              </div>
+
+              {/* Registered links by theme */}
+              <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>登録済みリンク（{affiliateLinks.length}件）</h3>
+              {affiliateLinks.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted }}>
+                  <div style={{ fontSize: 14 }}>まだリンクが登録されていません</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>上のフォームからテーマごとにアフィリエイトリンクを追加してください</div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {THEMES.filter((t) => affiliateLinks.some((l) => l.themeId === t.id)).map((theme) => (
+                    <div key={theme.id} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: C.accent }}>{theme.label}</div>
+                      {affiliateLinks
+                        .map((link, idx) => ({ link, idx }))
+                        .filter(({ link }) => link.themeId === theme.id)
+                        .map(({ link, idx }) => (
+                          <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8, padding: "10px 12px", background: "#14141F", borderRadius: 8 }}>
+                            <code style={{ flex: 1, fontSize: 11, color: C.textDim, wordBreak: "break-all", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{link.html}</code>
+                            <button
+                              onClick={() => saveAffiliateLinks(affiliateLinks.filter((_, i) => i !== idx))}
+                              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.red}44`, background: "transparent", color: C.red, fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                            >
+                              削除
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Info */}
+              <div style={{ marginTop: 20, padding: "14px 18px", background: "#0F1A14", border: `1px solid ${C.green}33`, borderRadius: 12, fontSize: 12, color: C.green, lineHeight: 1.9 }}>
+                手動生成時: ダッシュボードに登録したリンクが自動挿入されます<br />
+                Cron自動生成時: Vercel環境変数 <code style={{ color: C.accentAlt }}>AFFILIATE_LINKS</code> にJSON形式で登録してください
+              </div>
             </div>
           )}
 

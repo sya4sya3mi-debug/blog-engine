@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfig, ALL_GENRES, getTodaysTheme, getTodaysTargetAge } from "@/lib/config";
 import { generateArticle } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
+import { replaceAffiliatePlaceholders, getCronAffiliateLinks } from "@/lib/affiliate";
 
 export const maxDuration = 60; // Vercel function timeout
 
@@ -37,6 +38,12 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Claude APIで記事生成（ターゲット年代に応じた文体で）
     const article = await generateArticle(config.anthropicApiKey, keyword, theme, genre.name, targetAge);
+
+    // 1.5. アフィリエイトリンク自動置換
+    const cronLinks = getCronAffiliateLinks(theme.id);
+    if (cronLinks.length > 0) {
+      article.htmlContent = replaceAffiliatePlaceholders(article.htmlContent, cronLinks);
+    }
 
     // 2. WordPress に投稿
     const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);

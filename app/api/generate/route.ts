@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfig, ALL_GENRES } from "@/lib/config";
 import { generateArticle, generateProductArticle, TargetAge } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
+import { AffiliateLink, replaceAffiliatePlaceholders } from "@/lib/affiliate";
 
 export const maxDuration = 60;
 
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   // mode: "theme"（テーマ指定）or "product"（商品指定）
-  const { mode, themeId, keyword, products, customKeyword, postToWP, targetAge } = body as {
+  const { mode, themeId, keyword, products, customKeyword, postToWP, targetAge, affiliateLinks } = body as {
     mode: "theme" | "product";
     themeId?: string;
     keyword?: string;
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
     customKeyword?: string;
     postToWP?: boolean;
     targetAge?: TargetAge;
+    affiliateLinks?: AffiliateLink[];
   };
 
   const age: TargetAge = targetAge || "30s";
@@ -51,6 +53,11 @@ export async function POST(req: NextRequest) {
       }
       const kw = keyword || theme.keywords[0];
       article = await generateArticle(config.anthropicApiKey, kw, theme, genre.name, age);
+    }
+
+    // アフィリエイトリンク自動置換
+    if (affiliateLinks && affiliateLinks.length > 0) {
+      article.htmlContent = replaceAffiliatePlaceholders(article.htmlContent, affiliateLinks);
     }
 
     let wpResult = null;
