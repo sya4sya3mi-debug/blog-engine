@@ -247,21 +247,79 @@ interface ParsedArticle {
 }
 
 function extractJSON(text: string): ParsedArticle {
-  try {
-    // ```json ... ``` ブロックから抽出
-    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1].trim());
-    }
+  // Step 1: ```json ... ``` ブロックから抽出
+  let jsonStr = "";
+  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
+  if (jsonMatch) {
+    jsonStr = jsonMatch[1].trim();
+  } else {
     // { から始まるJSONを探す
     const braceMatch = text.match(/\{[\s\S]*\}/);
     if (braceMatch) {
-      return JSON.parse(braceMatch[0]);
+      jsonStr = braceMatch[0];
+    } else {
+      jsonStr = text.trim();
     }
-    return JSON.parse(text.trim());
-  } catch (e) {
-    throw new Error(`Claude APIのレスポンスをJSONとして解析できませんでした。レスポンス先頭: ${text.slice(0, 200)}`);
   }
+
+  // Step 2: パース試行
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // Step 3: max_tokensで途中切断された場合の修復
+    // 末尾が閉じていないJSONを修復する
+    try {
+      const repaired = repairTruncatedJSON(jsonStr);
+      return JSON.parse(repaired);
+    } catch {
+      throw new Error(`Claude APIのレスポンスをJSONとして解析できませんでした。レスポンス先頭: ${text.slice(0, 200)}`);
+    }
+  }
+}
+
+/** max_tokensで途中切断されたJSONを修復する */
+function repairTruncatedJSON(json: string): string {
+  let s = json.trim();
+
+  // 末尾の不完全な文字列値を閉じる
+  // 開いている引用符を数える
+  let inString = false;
+  let lastQuotePos = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '"' && (i === 0 || s[i - 1] !== '\\')) {
+      inString = !inString;
+      if (inString) lastQuotePos = i;
+    }
+  }
+
+  // 文字列が開いたまま → 閉じる
+  if (inString) {
+    s += '"';
+  }
+
+  // 末尾のカンマを削除
+  s = s.replace(/,\s*$/, '');
+
+  // 開いている括弧を閉じる
+  const stack: string[] = [];
+  inString = false;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '"' && (i === 0 || s[i - 1] !== '\\')) {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (s[i] === '{') stack.push('}');
+    else if (s[i] === '[') stack.push(']');
+    else if (s[i] === '}' || s[i] === ']') stack.pop();
+  }
+
+  // スタックに残っている括弧を逆順で閉じる
+  while (stack.length > 0) {
+    s += stack.pop();
+  }
+
+  return s;
 }
 
 async function callClaude(apiKey: string, prompt: string) {
@@ -270,7 +328,7 @@ async function callClaude(apiKey: string, prompt: string) {
   // ストリーミングで受信（Vercel Hobby の関数タイムアウト対策）
   const stream = client.messages.stream({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
+    max_tokens: 8096,
     messages: [{ role: "user", content: prompt }],
   });
 
