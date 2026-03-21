@@ -59,7 +59,56 @@ const COMMISSION_RATES: Record<string, number> = {
 
 // ===== テーマ → 楽天ジャンルID マッピング =====
 // 美容系テーマに対応する楽天市場のジャンルIDで絞り込み
+// 楽天ジャンル: 100371=スキンケア, 100372=メイク, 100373=ヘアケア, 100374=ボディケア
+//   551176=日焼け止め, 100938=サプリ, 216131=美容家電, 100375=美容・コスメ(親)
 const THEME_GENRE_MAP: Record<string, { genreId: string; minPrice: number; keywords: string[] }> = {
+  // ===== 医療美容テーマ（施術後ケア・ホームケア商品を提案） =====
+  "iryou-datsumo": {
+    genreId: "100371",
+    minPrice: 1500,
+    keywords: ["脱毛後 保湿 クリーム", "脱毛 アフターケア", "除毛クリーム 女性 人気"],
+  },
+  "ipl": {
+    genreId: "100371",
+    minPrice: 2000,
+    keywords: ["美顔器 IPL 家庭用", "フォトフェイシャル ホームケア", "シミ対策 美容液"],
+  },
+  "hifu": {
+    genreId: "100371",
+    minPrice: 2000,
+    keywords: ["たるみ 美容液 リフトアップ", "ハリ 美容液 エイジング", "EMS 美顔器"],
+  },
+  "kanpan": {
+    genreId: "100371",
+    minPrice: 1500,
+    keywords: ["肝斑 美白 美容液", "トラネキサム酸 化粧水", "ビタミンC誘導体 美容液"],
+  },
+  "laser-toning": {
+    genreId: "100371",
+    minPrice: 1500,
+    keywords: ["美白 美容液 シミ", "トーンアップ 美容液", "ハイドロキノン クリーム"],
+  },
+  "peeling": {
+    genreId: "100371",
+    minPrice: 1000,
+    keywords: ["ピーリング ジェル 毛穴", "AHA 角質ケア", "酵素洗顔 毛穴 黒ずみ"],
+  },
+  "electroporation": {
+    genreId: "100371",
+    minPrice: 3000,
+    keywords: ["エレクトロポレーション 美顔器", "イオン導入 美顔器", "美顔器 導入 美容液"],
+  },
+  "botox": {
+    genreId: "100371",
+    minPrice: 2000,
+    keywords: ["シワ改善 クリーム", "ペプチド 美容液", "塗るボトックス 美容液"],
+  },
+  "online-clinic": {
+    genreId: "100371",
+    minPrice: 1500,
+    keywords: ["美肌 スキンケアセット", "ドクターズコスメ", "医薬部外品 美白"],
+  },
+  // ===== コスメ・スキンケアテーマ =====
   "skincare-aging": {
     genreId: "100371",
     minPrice: 2000,
@@ -111,6 +160,9 @@ const THEME_GENRE_MAP: Record<string, { genreId: string; minPrice: number; keywo
     keywords: ["オールインワンジェル", "時短 スキンケア セット", "オールインワン エイジング"],
   },
 };
+
+// フォールバック: マッピングにないテーマは美容・コスメ親ジャンルで絞り込み
+const DEFAULT_BEAUTY_GENRE = "100375"; // 美容・コスメ・香水（親カテゴリ）
 
 export interface SearchOptions {
   keyword: string;
@@ -174,6 +226,9 @@ export async function searchRakutenProducts(
   const maxResults = options?.maxResults ?? hits;
   const expandKeywords = options?.expandKeywords ?? !!themeId;
 
+  // ジャンルID: テーマ設定 → フォールバック（美容・コスメ親カテゴリ）
+  const genreId = themeConfig?.genreId ?? DEFAULT_BEAUTY_GENRE;
+
   // 検索キーワードリスト（テーマ別に展開 or 単独）
   const searchKeywords: string[] = [keyword];
   if (expandKeywords && themeConfig?.keywords) {
@@ -192,7 +247,7 @@ export async function searchRakutenProducts(
   for (const kw of keywordsToSearch) {
     try {
       const products = await fetchRakutenApi(appId, affiliateId, kw, 30, accessKey, {
-        genreId: themeConfig?.genreId,
+        genreId,
         minPrice,
         maxPrice,
       });
