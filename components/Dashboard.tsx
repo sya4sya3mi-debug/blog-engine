@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [selectedKeyword, setSelectedKeyword] = useState(THEMES[0].keywords[0]);
   const [products, setProducts] = useState<string[]>([""]);
   const [customKeyword, setCustomKeyword] = useState("");
+  const [targetAge, setTargetAge] = useState<"10s" | "20s" | "30s">("30s");
   const [postToWP, setPostToWP] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<any>(null);
@@ -106,7 +107,7 @@ export default function Dashboard() {
     setGenerating(true);
     setGenResult(null);
     try {
-      const body: any = { postToWP };
+      const body: any = { postToWP, targetAge };
       if (genMode === "theme") {
         body.mode = "theme";
         body.themeId = selectedTheme.id;
@@ -381,6 +382,32 @@ export default function Dashboard() {
                     </div>
                   </>
                 )}
+
+                {/* Target age selector */}
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 8, fontWeight: 600 }}>ターゲット年代</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {([
+                      { id: "10s" as const, label: "10代向け", desc: "学生時代の体験談ベース" },
+                      { id: "20s" as const, label: "20代向け", desc: "20代の頃の体験談ベース" },
+                      { id: "30s" as const, label: "30代向け", desc: "今使っている風に" },
+                    ] as const).map((age) => (
+                      <button
+                        key={age.id}
+                        onClick={() => setTargetAge(age.id)}
+                        style={{
+                          flex: 1, padding: "12px 14px", borderRadius: 10,
+                          border: `1.5px solid ${targetAge === age.id ? C.accent : C.borderLight}`,
+                          background: targetAge === age.id ? `${C.accent}14` : "transparent",
+                          cursor: "pointer", textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 700, color: targetAge === age.id ? C.accent : C.text, marginBottom: 2 }}>{age.label}</div>
+                        <div style={{ fontSize: 10, color: C.textMuted }}>{age.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {/* WP toggle */}
                 <div style={{ marginBottom: 24, padding: "14px 16px", background: "#14141F", borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

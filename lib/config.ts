@@ -72,6 +72,15 @@ export function getTodaysTheme(genre: Genre, dateStr: string): { theme: SubTheme
   return { theme, keyword };
 }
 
+export type TargetAge = "10s" | "20s" | "30s";
+const TARGET_AGES: TargetAge[] = ["10s", "20s", "30s"];
+
+/** 今日のターゲット年代を決定（日付ベースのローテーション） */
+export function getTodaysTargetAge(dateStr: string): TargetAge {
+  const hash = hashString(dateStr + "-age");
+  return TARGET_AGES[hash % TARGET_AGES.length];
+}
+
 /** 今日の投稿時刻を決定（JST 9-12, 15-18, 19-22 からランダム） */
 export function getTodaysPostHour(dateStr: string): number {
   const timeSlots = [

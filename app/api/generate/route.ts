@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getConfig, ALL_GENRES } from "@/lib/config";
-import { generateArticle, generateProductArticle } from "@/lib/generate";
+import { generateArticle, generateProductArticle, TargetAge } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
 
 export const maxDuration = 60;
@@ -15,14 +15,17 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   // mode: "theme"（テーマ指定）or "product"（商品指定）
-  const { mode, themeId, keyword, products, customKeyword, postToWP } = body as {
+  const { mode, themeId, keyword, products, customKeyword, postToWP, targetAge } = body as {
     mode: "theme" | "product";
     themeId?: string;
     keyword?: string;
     products?: string[];
     customKeyword?: string;
     postToWP?: boolean;
+    targetAge?: TargetAge;
   };
+
+  const age: TargetAge = targetAge || "30s";
 
   const genre = ALL_GENRES.find((g) => g.id === config.activeGenre);
   if (!genre) {
@@ -37,7 +40,7 @@ export async function POST(req: NextRequest) {
       if (!products || products.length === 0) {
         return NextResponse.json({ error: "商品名を1つ以上指定してください" }, { status: 400 });
       }
-      article = await generateProductArticle(config.anthropicApiKey, products, genre.name, customKeyword);
+      article = await generateProductArticle(config.anthropicApiKey, products, genre.name, age, customKeyword);
     } else {
       // テーマ指定モード
       const theme = themeId
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "テーマが見つかりません" }, { status: 400 });
       }
       const kw = keyword || theme.keywords[0];
-      article = await generateArticle(config.anthropicApiKey, kw, theme, genre.name);
+      article = await generateArticle(config.anthropicApiKey, kw, theme, genre.name, age);
     }
 
     let wpResult = null;

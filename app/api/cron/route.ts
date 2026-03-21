@@ -4,7 +4,7 @@
 // ==========================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getConfig, ALL_GENRES, getTodaysTheme } from "@/lib/config";
+import { getConfig, ALL_GENRES, getTodaysTheme, getTodaysTargetAge } from "@/lib/config";
 import { generateArticle } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
 
@@ -30,12 +30,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `ジャンル '${config.activeGenre}' が見つかりません` }, { status: 400 });
   }
 
-  // 今日のテーマ＆キーワードを決定（日付ベースの決定論的ローテーション）
+  // 今日のテーマ＆キーワード＆ターゲット年代を決定（日付ベースの決定論的ローテーション）
   const { theme, keyword } = getTodaysTheme(genre, dateStr);
+  const targetAge = getTodaysTargetAge(dateStr);
 
   try {
-    // 1. Claude APIで記事生成
-    const article = await generateArticle(config.anthropicApiKey, keyword, theme, genre.name);
+    // 1. Claude APIで記事生成（ターゲット年代に応じた文体で）
+    const article = await generateArticle(config.anthropicApiKey, keyword, theme, genre.name, targetAge);
 
     // 2. WordPress に投稿
     const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest) {
       date: dateStr,
       theme: theme.label,
       keyword,
+      targetAge,
       article: {
         title: article.title,
         wpPostId: post.id,
