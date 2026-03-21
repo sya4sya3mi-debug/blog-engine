@@ -112,6 +112,13 @@ export default function Dashboard() {
   const [editingPartner, setEditingPartner] = useState<AffiliatePartner | null>(null);
   const [affFilterTheme, setAffFilterTheme] = useState("all");
 
+  // Rakuten search state
+  const [rakutenKeyword, setRakutenKeyword] = useState("");
+  const [rakutenResults, setRakutenResults] = useState<any[]>([]);
+  const [rakutenSearching, setRakutenSearching] = useState(false);
+  const [rakutenTheme, setRakutenTheme] = useState(THEMES[0].id);
+  const [rakutenError, setRakutenError] = useState("");
+
   // New partner form defaults
   const emptyPartner: AffiliatePartner = {
     id: "", asp: "A8.net", programName: "", themeIds: [], commissionType: "cpa",
@@ -209,6 +216,29 @@ export default function Dashboard() {
       setGenResult({ ok: false, error: e.message });
     }
     setGenerating(false);
+  }
+
+  // ---- Rakuten Search ----
+  async function handleRakutenSearch() {
+    setRakutenSearching(true);
+    setRakutenError("");
+    setRakutenResults([]);
+    try {
+      const res = await fetch("/api/rakuten-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: rakutenKeyword, hits: 5 }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setRakutenResults(data.products);
+      } else {
+        setRakutenError(data.error || data.message);
+      }
+    } catch (e: any) {
+      setRakutenError(e.message);
+    }
+    setRakutenSearching(false);
   }
 
   // ---- WP Test ----
@@ -649,10 +679,74 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Rakuten search */}
+              <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginTop: 24 }}>
+                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#bf0000" }}>楽天商品を検索して自動登録</h3>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  <input
+                    value={rakutenKeyword}
+                    onChange={(e) => setRakutenKeyword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !rakutenSearching && handleRakutenSearch()}
+                    placeholder="商品名やキーワードで検索（例：エイジングケア 美容液）"
+                    style={{ flex: 1, background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 13, outline: "none" }}
+                  />
+                  <select value={rakutenTheme} onChange={(e) => setRakutenTheme(e.target.value)} style={{ background: "#14141F", border: `1.5px solid ${C.borderLight}`, borderRadius: 10, padding: "10px 12px", color: C.text, fontSize: 12, outline: "none", maxWidth: 160 }}>
+                    {THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                  <button
+                    onClick={handleRakutenSearch}
+                    disabled={rakutenSearching || !rakutenKeyword.trim()}
+                    style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: rakutenSearching ? "#1A1A28" : "#bf0000", color: rakutenSearching ? C.textMuted : "#fff", fontWeight: 700, fontSize: 13, cursor: rakutenSearching ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
+                  >
+                    {rakutenSearching ? "検索中..." : "楽天検索"}
+                  </button>
+                </div>
+                {rakutenError && <div style={{ fontSize: 12, color: C.red, marginBottom: 8 }}>{rakutenError}</div>}
+
+                {rakutenResults.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {rakutenResults.map((product, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#14141F", borderRadius: 10 }}>
+                        {product.imageUrl && <img src={product.imageUrl} alt="" style={{ width: 48, height: 48, objectFit: "contain", borderRadius: 4, flexShrink: 0 }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{product.itemName}</div>
+                          <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
+                            <span style={{ color: "#bf0000", fontWeight: 700 }}>¥{product.itemPrice.toLocaleString()}</span>
+                            <span style={{ marginLeft: 8 }}>{product.shopName}</span>
+                            {product.reviewCount > 0 && <span style={{ marginLeft: 8 }}>★{product.reviewAverage} ({product.reviewCount}件)</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newPartner: AffiliatePartner = {
+                              id: `aff_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                              asp: "楽天アフィリエイト",
+                              programName: product.itemName.slice(0, 50),
+                              themeIds: [rakutenTheme],
+                              commissionType: "percent",
+                              commissionValue: "2〜4%",
+                              priority: 40,
+                              html: product.affiliateHtml,
+                              active: true,
+                            };
+                            savePartners([...partners, newPartner]);
+                          }}
+                          disabled={partners.some((p) => p.html.includes(product.affiliateUrl))}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: partners.some((p) => p.html.includes(product.affiliateUrl)) ? "#1A1A28" : C.green, color: partners.some((p) => p.html.includes(product.affiliateUrl)) ? C.textMuted : "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                        >
+                          {partners.some((p) => p.html.includes(product.affiliateUrl)) ? "登録済み" : "登録"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Info */}
               <div style={{ marginTop: 20, padding: "14px 18px", background: "#0F1A14", border: `1px solid ${C.green}33`, borderRadius: 12, fontSize: 12, color: C.green, lineHeight: 1.9 }}>
                 記事生成時、テーマに紐づく提携先を優先度順に自動選択してプレースホルダーに挿入します<br />
-                Cron自動生成時: Vercel環境変数 <code style={{ color: C.accentAlt }}>AFFILIATE_DB</code> にJSON形式で登録してください
+                楽天検索: RAKUTEN_APP_ID / RAKUTEN_AFFILIATE_ID をVercel環境変数に設定してください<br />
+                Cron自動生成時: 環境変数 <code style={{ color: C.accentAlt }}>AFFILIATE_DB</code> にJSON形式で登録してください
               </div>
             </div>
           )}
