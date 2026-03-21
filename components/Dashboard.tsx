@@ -28,26 +28,28 @@ interface HistoryItem {
 // Themes data (mirror of server config)
 // ==========================================
 const THEMES: SubTheme[] = [
-  { id: "lotion", label: "化粧水", keywords: ["化粧水 おすすめ", "化粧水 ランキング", "化粧水 プチプラ"] },
-  { id: "serum", label: "美容液", keywords: ["美容液 おすすめ", "美容液 人気", "美容液 エイジングケア"] },
-  { id: "cream", label: "保湿クリーム", keywords: ["保湿クリーム おすすめ", "保湿クリーム 敏感肌", "フェイスクリーム ランキング"] },
-  { id: "cleansing", label: "クレンジング", keywords: ["クレンジング おすすめ", "クレンジングオイル 人気", "クレンジングバーム ランキング"] },
-  { id: "sunscreen", label: "日焼け止め", keywords: ["日焼け止め おすすめ", "日焼け止め 顔用", "UVケア ランキング"] },
-  { id: "foundation", label: "ファンデーション", keywords: ["ファンデーション おすすめ", "ファンデ 崩れない", "ファンデーション 乾燥肌"] },
-  { id: "lipstick", label: "リップ・口紅", keywords: ["リップ おすすめ", "口紅 人気色", "リップティント ランキング"] },
-  { id: "eyeshadow", label: "アイシャドウ", keywords: ["アイシャドウ おすすめ", "アイシャドウパレット 人気", "アイメイク トレンド"] },
-  { id: "mascara", label: "マスカラ", keywords: ["マスカラ おすすめ", "マスカラ にじまない", "マスカラ ロング"] },
-  { id: "shampoo", label: "シャンプー", keywords: ["シャンプー おすすめ", "シャンプー 市販", "アミノ酸シャンプー ランキング"] },
-  { id: "treatment", label: "トリートメント", keywords: ["トリートメント おすすめ", "ヘアトリートメント 市販", "洗い流さないトリートメント"] },
-  { id: "hairdryer", label: "ドライヤー", keywords: ["ドライヤー おすすめ", "ドライヤー 速乾", "高級ドライヤー ランキング"] },
-  { id: "bodycare", label: "ボディケア", keywords: ["ボディクリーム おすすめ", "ボディローション 保湿", "ボディケア いい匂い"] },
-  { id: "nailcare", label: "ネイルケア", keywords: ["ネイルケア おすすめ", "ジェルネイル セルフ", "ネイルオイル 人気"] },
-  { id: "perfume", label: "香水・フレグランス", keywords: ["香水 レディース 人気", "プチプラ 香水 おすすめ", "フレグランス モテ"] },
-  { id: "skincare-set", label: "スキンケアセット", keywords: ["スキンケア セット おすすめ", "基礎化粧品 ライン使い", "スキンケア 初心者 セット"] },
-  { id: "acne", label: "ニキビケア", keywords: ["ニキビケア おすすめ", "大人ニキビ スキンケア", "ニキビ 洗顔 ランキング"] },
-  { id: "aging", label: "エイジングケア", keywords: ["エイジングケア おすすめ", "シワ改善 美容液", "たるみ対策 スキンケア"] },
-  { id: "pores", label: "毛穴ケア", keywords: ["毛穴ケア おすすめ", "毛穴 黒ずみ 除去", "毛穴 引き締め 化粧水"] },
-  { id: "supplement", label: "美容サプリ", keywords: ["美容サプリ おすすめ", "コラーゲン サプリ 人気", "ビタミンC サプリ 美白"] },
+  // ===== 最優先: 美容医療・施術系（高単価CPA） =====
+  { id: "iryou-datsumo", label: "医療脱毛（女性）", keywords: ["医療脱毛 おすすめ 比較", "医療脱毛 料金 相場", "医療脱毛 回数 期間", "医療脱毛 VIO 痛み", "医療脱毛 全身 安い"] },
+  { id: "mens-datsumo", label: "メンズ脱毛・ヒゲ脱毛", keywords: ["ヒゲ脱毛 何回 効果", "メンズ脱毛 料金 比較", "メンズ 医療脱毛 おすすめ", "ヒゲ脱毛 痛い 対策"] },
+  { id: "ipl", label: "IPL・フォトフェイシャル", keywords: ["IPL フォトフェイシャル 効果", "IPL レーザートーニング 違い", "フォトフェイシャル 料金 回数", "シミ取り IPL 比較"] },
+  { id: "hifu", label: "ハイフ（HIFU）", keywords: ["ハイフ 効果 持続期間", "HIFU 料金 比較", "ハイフ たるみ 何回", "医療ハイフ エステハイフ 違い"] },
+  { id: "kanpan", label: "肝斑・くすみ治療", keywords: ["肝斑 治療 比較", "肝斑 レーザートーニング 効果", "くすみ 原因 治療法", "肝斑 トラネキサム酸 効果"] },
+  { id: "laser-toning", label: "レーザートーニング", keywords: ["レーザートーニング 効果 回数", "レーザートーニング 料金 相場", "レーザートーニング シミ 肝斑"] },
+  { id: "peeling", label: "ピーリング・毛穴治療", keywords: ["ケミカルピーリング 効果 回数", "毛穴治療 おすすめ クリニック", "ピーリング 料金 比較", "毛穴 黒ずみ 皮膚科 治療"] },
+  { id: "electroporation", label: "エレクトロポレーション", keywords: ["エレクトロポレーション 効果", "エレクトロポレーション イオン導入 違い", "エレクトロポレーション 料金 回数"] },
+  { id: "botox", label: "エラボトックス・ボトックス", keywords: ["エラボトックス 効果 期間", "ボトックス 料金 比較", "ボトックス 副作用 リスク"] },
+  { id: "online-clinic", label: "オンライン美容診療", keywords: ["オンライン 美容皮膚科 おすすめ", "オンライン診療 美容 比較", "美容皮膚科 予約 取りやすい"] },
+  // ===== 安定化: コスメ・スキンケア（EC = 承認安定） =====
+  { id: "skincare-aging", label: "エイジングケア化粧品", keywords: ["エイジングケア 美容液 おすすめ", "シワ改善 化粧品 ランキング", "たるみ スキンケア 30代", "ほうれい線 ケア 化粧品"] },
+  { id: "sunscreen", label: "日焼け止め・UVケア", keywords: ["日焼け止め 顔用 おすすめ", "日焼け止め 敏感肌 選び方", "UVケア 下地 比較"] },
+  { id: "skincare-sensitive", label: "敏感肌スキンケア", keywords: ["敏感肌 化粧水 おすすめ", "敏感肌 保湿クリーム 選び方", "肌荒れ スキンケア 成分"] },
+  { id: "cleansing", label: "クレンジング・洗顔", keywords: ["クレンジング おすすめ 肌に優しい", "毛穴 クレンジング ランキング", "ダブル洗顔不要 おすすめ"] },
+  { id: "pore-care", label: "毛穴ケア（ホームケア）", keywords: ["毛穴ケア 化粧水 おすすめ", "毛穴 黒ずみ スキンケア", "毛穴 引き締め 方法"] },
+  { id: "acne-care", label: "ニキビ・肌荒れケア", keywords: ["大人ニキビ スキンケア おすすめ", "ニキビ跡 ケア 方法", "ニキビ 化粧水 選び方"] },
+  { id: "shampoo-haircare", label: "シャンプー・ヘアケア", keywords: ["シャンプー おすすめ 市販", "アミノ酸シャンプー ランキング", "ダメージヘア トリートメント おすすめ"] },
+  { id: "bodycare", label: "ボディケア・デリケートゾーン", keywords: ["ボディクリーム おすすめ 保湿", "デリケートゾーン ケア おすすめ", "ボディケア いい匂い 人気"] },
+  { id: "supplement", label: "美容サプリ・インナーケア", keywords: ["コラーゲン サプリ 効果", "ビタミンC サプリ おすすめ", "美容サプリ 選び方 成分"] },
+  { id: "time-saving", label: "時短スキンケア・メンズケア", keywords: ["時短スキンケア おすすめ", "メンズ スキンケア 初心者", "オールインワン おすすめ 30代"] },
 ];
 
 // ==========================================
@@ -75,7 +77,7 @@ export default function Dashboard() {
   const [selectedKeyword, setSelectedKeyword] = useState(THEMES[0].keywords[0]);
   const [products, setProducts] = useState<string[]>([""]);
   const [customKeyword, setCustomKeyword] = useState("");
-  const [targetAge, setTargetAge] = useState<"10s" | "20s" | "30s">("30s");
+  const [targetAge, setTargetAge] = useState<"20s" | "30s" | "40s">("30s");
   const [postToWP, setPostToWP] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<any>(null);
@@ -267,7 +269,7 @@ export default function Dashboard() {
               <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 20 }}>
                 <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Cron自動投稿</h3>
                 <div style={{ fontSize: 13, color: C.textDim, lineHeight: 2 }}>
-                  <div>Vercel Cronが毎時実行され、日付シードで決まった時刻に記事を自動生成＆投稿します。</div>
+                  <div>Vercel Cronが毎日1回実行（UTC 0:00 = JST 9:00）、記事を自動生成＆WP投稿します。</div>
                   <div style={{ display: "flex", gap: 20, marginTop: 8 }}>
                     <span style={{ padding: "4px 12px", borderRadius: 6, background: `${C.green}18`, color: C.green, fontSize: 12, fontWeight: 600 }}>朝 9-12時</span>
                     <span style={{ padding: "4px 12px", borderRadius: 6, background: `${C.orange}18`, color: C.orange, fontSize: 12, fontWeight: 600 }}>昼 15-18時</span>
@@ -388,9 +390,9 @@ export default function Dashboard() {
                   <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 8, fontWeight: 600 }}>ターゲット年代</label>
                   <div style={{ display: "flex", gap: 8 }}>
                     {([
-                      { id: "10s" as const, label: "10代向け", desc: "学生時代の体験談ベース" },
                       { id: "20s" as const, label: "20代向け", desc: "20代の頃の体験談ベース" },
-                      { id: "30s" as const, label: "30代向け", desc: "今使っている風に" },
+                      { id: "30s" as const, label: "30代向け", desc: "同世代のリアルな使用感" },
+                      { id: "40s" as const, label: "40代向け", desc: "たるみ・シミ等の本気ケア" },
                     ] as const).map((age) => (
                       <button
                         key={age.id}
