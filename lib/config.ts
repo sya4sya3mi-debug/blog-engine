@@ -42,17 +42,6 @@ export const BEAUTY_GENRE: Genre = {
       ],
     },
     {
-      id: "mens-datsumo",
-      label: "メンズ脱毛・ヒゲ脱毛",
-      articleType: "comparison",
-      keywords: [
-        "ヒゲ脱毛 何回 効果",
-        "メンズ脱毛 料金 比較",
-        "メンズ 医療脱毛 おすすめ",
-        "ヒゲ脱毛 痛い 対策",
-      ],
-    },
-    {
       id: "ipl",
       label: "IPL・フォトフェイシャル",
       articleType: "comparison",
@@ -231,12 +220,12 @@ export const BEAUTY_GENRE: Genre = {
     },
     {
       id: "time-saving",
-      label: "時短スキンケア・メンズケア",
+      label: "時短スキンケア",
       articleType: "howto",
       keywords: [
         "時短スキンケア おすすめ",
-        "メンズ スキンケア 初心者",
         "オールインワン おすすめ 30代",
+        "時短美容 スキンケア 方法",
       ],
     },
   ],
