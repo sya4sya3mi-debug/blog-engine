@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     try {
           const { keyword, siteTheme, afName } = await req.json();
           if (!keyword || !siteTheme) return NextResponse.json({ error: "キーワードが必要です" }, { status: 400 });
-          const prompt = "SEOに精通したアフィリエイトブログライターとして記事を作成してください。\n【テーマ】" + siteTheme + "\n【キーワード】" + keyword + "\n【アフィリエイト】" + afName + "\n【文字数】1000字程度\n\n# [タイトル]\n## はじめに\n## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定：楽天】と記載）\n## まとめ\n---\n※メタディスクリプション（120字以内）：";
+          const prompt = "SEOに精通したアフィリエイトブログライターとして記事を作成してください。\n※タイトルに「プロ」という言葉は事実に反する可能性があるため使用しないでください。\n【テーマ】" + siteTheme + "\n【キーワード】" + keyword + "\n【アフィリエイト】" + afName + "\n【文字数】1000字程度\n\n# [タイトル]\n## はじめに\n## おすすめ商品3選（各商品の後に【アフィリエイトリンク挿入予定：楽天】と記載）\n## まとめ\n---\n※メタディスクリプション（120字以内）：";
           const res = await fetch("https://api.anthropic.com/v1/messages", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY ?? "", "anthropic-version": "2023-06-01" },

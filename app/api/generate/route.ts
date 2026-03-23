@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     }
 
     const prompt =
-      "SEOに精通したアフィリエイトブログライターとして記事を作成してください。\n[テーマ] " +
+      "SEOに精通したアフィリエイトブログライターとして記事を作成してください。\n※タイトルに「プロ」という言葉は事実に反する可能性があるため使用しないでください。\n[テーマ] " +
       siteTheme +
       "\n[キーワード] " +
       keyword +
