@@ -6,6 +6,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
 
+// GETハンドラー（おまかせ検索・成分フィルターから呼ばれる）
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const keyword = url.searchParams.get("keyword") || "";
+  const hits = url.searchParams.get("hits") ? Number(url.searchParams.get("hits")) : 10;
+  const themeId = url.searchParams.get("themeId") || undefined;
+  const minPrice = url.searchParams.get("minPrice") ? Number(url.searchParams.get("minPrice")) : undefined;
+  const maxPrice = url.searchParams.get("maxPrice") ? Number(url.searchParams.get("maxPrice")) : undefined;
+  return handleSearch(keyword, hits, themeId, minPrice, maxPrice);
+}
+
+// POSTハンドラー（手動検索・記事生成タブから呼ばれる）
 export async function POST(req: NextRequest) {
   const { keyword, hits, themeId, minPrice, maxPrice } = (await req.json()) as {
     keyword: string;
@@ -14,6 +26,10 @@ export async function POST(req: NextRequest) {
     minPrice?: number;
     maxPrice?: number;
   };
+  return handleSearch(keyword || "", hits || 10, themeId, minPrice, maxPrice);
+}
+
+async function handleSearch(keyword: string, hits: number, themeId?: string, minPrice?: number, maxPrice?: number) {
 
   const rakutenAppId = process.env.RAKUTEN_APP_ID;
   const rakutenAccessKey = process.env.RAKUTEN_ACCESS_KEY;

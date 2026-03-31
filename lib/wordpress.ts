@@ -5,18 +5,22 @@
 interface WPPostPayload {
   title: string;
   content: string;
-  status: "draft" | "publish";
+  status: "draft" | "publish" | "future";
+  date?: string;
   slug?: string;
   categories?: number[];
   tags?: number[];
   meta?: Record<string, string>;
+  featured_media?: number;
 }
 
 interface WPPostResponse {
   id: number;
   link: string;
   status: string;
+  slug: string;
   title: { rendered: string };
+  featured_media?: number;
 }
 
 export class WordPressClient {
@@ -53,6 +57,14 @@ export class WordPressClient {
   /** 記事を投稿する */
   async createPost(payload: WPPostPayload): Promise<WPPostResponse> {
     return this.request<WPPostResponse>("/posts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /** 既存記事を更新する */
+  async updatePost(postId: number, payload: Partial<WPPostPayload>): Promise<WPPostResponse> {
+    return this.request<WPPostResponse>(`/posts/${postId}`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -121,8 +133,112 @@ export class WordPressClient {
     }
   }
 
+  /** ユーザーのGravatar URLと名前を取得 */
+  async getAuthorProfile(): Promise<{ name: string; avatarUrl: string }> {
+    const res = await fetch(`${this.baseUrl}/wp-json/wp/v2/users/me`, {
+      headers: { Authorization: this.authHeader },
+    });
+    if (!res.ok) throw new Error(`プロフィール取得失敗 (${res.status})`);
+    const user = (await res.json()) as { name: string; avatar_urls?: Record<string, string> };
+    const avatarUrl = user.avatar_urls?.["96"] || user.avatar_urls?.["48"] || "";
+    return { name: user.name, avatarUrl };
+  }
+
   /** 最近の投稿を取得 */
   async getRecentPosts(count: number = 10): Promise<WPPostResponse[]> {
     return this.request(`/posts?per_page=${count}&orderby=date&order=desc&status=any`);
+  }
+
+  /** 画像URLからWordPressメディアライブラリにアップロード */
+  async uploadMediaFromUrl(
+    imageUrl: string,
+    filename: string,
+    altText: string,
+  ): Promise<{ id: number; url: string }> {
+    // 1. DALL-E の一時URLから画像バイナリを取得
+    const imageRes = await fetch(imageUrl);
+    if (!imageRes.ok) {
+      throw new Error(`画像のダウンロードに失敗しました (${imageRes.status})`);
+    }
+    const imageBuffer = await imageRes.arrayBuffer();
+
+    // 2. WordPress REST API にアップロード
+    const url = `${this.baseUrl}/wp-json/wp/v2/media`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "image/png",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        Authorization: this.authHeader,
+      },
+      body: imageBuffer,
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`WordPress メディアアップロードエラー (${res.status}): ${body}`);
+    }
+
+    const media = (await res.json()) as { id: number; source_url: string };
+
+    // 3. alt テキストを設定
+    try {
+      await this.request(`/media/${media.id}`, {
+        method: "POST",
+        body: JSON.stringify({ alt_text: altText }),
+      });
+    } catch {
+      // alt設定失敗は無視
+    }
+
+    return { id: media.id, url: media.source_url };
+  }
+
+  /** ArrayBufferからWordPressメディアライブラリにアップロード（写真用） */
+  async uploadMediaFromBuffer(
+    buffer: ArrayBuffer,
+    filename: string,
+    altText: string,
+    contentType: string = "image/jpeg",
+  ): Promise<{ id: number; url: string }> {
+    const url = `${this.baseUrl}/wp-json/wp/v2/media`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        Authorization: this.authHeader,
+      },
+      body: buffer,
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`WordPress メディアアップロードエラー (${res.status}): ${body}`);
+    }
+
+    const media = (await res.json()) as { id: number; source_url: string };
+
+    try {
+      await this.request(`/media/${media.id}`, {
+        method: "POST",
+        body: JSON.stringify({ alt_text: altText }),
+      });
+    } catch {}
+
+    return { id: media.id, url: media.source_url };
+  }
+
+  /** キーワードで既存投稿を検索（内部リンク用） */
+  async searchPosts(keyword: string, count: number = 5): Promise<{ id: number; link: string; title: string; slug: string }[]> {
+    const posts = await this.request<{ id: number; link: string; title: { rendered: string }; slug: string }[]>(
+      `/posts?search=${encodeURIComponent(keyword)}&per_page=${count}&status=publish`
+    );
+    return posts.map((p) => ({
+      id: p.id,
+      link: p.link,
+      title: p.title?.rendered || "",
+      slug: p.slug || "",
+    }));
   }
 }

@@ -7,7 +7,8 @@ export interface SubTheme {
   id: string;
   label: string;
   keywords: string[];
-  articleType: "comparison" | "howto" | "qa" | "guide";
+  articleType: "comparison" | "ranking" | "review" | "howto" | "qa" | "guide" | "problem-solving" | "trend";
+  articleIntent: "uru" | "atsumeru"; // 売る記事（高CVR）vs 集める記事（高トラフィック）
 }
 
 export interface Genre {
@@ -22,216 +23,156 @@ export interface Genre {
 // 最優先: 美容医療・脱毛・施術系（申込型 = 高単価CPA）
 // 安定化: 化粧品・ドラッグストア系（ECアフィ = 承認安定）
 
+// ==========================================
+// V3: プロのアフィリエイター戦略
+// 6テーマ × ロングテール悩み系キーワード
+//
+// 戦略:
+// 1. テーマを6個に絞り「トピカルオーソリティ」を早期確立
+// 2. ロングテール（悩み系）KWで新規ブログでも上位表示を狙う
+// 3. 記事タイプは「悩み解決」→「商品提案」の流れ
+// 4. 「売る記事」は具体的な悩みに紐づけて商品を推薦
+// 5. 「集める記事」は情報系で読者を集め、内部リンクで売る記事へ誘導
+// ==========================================
 export const BEAUTY_GENRE: Genre = {
   id: "beauty",
   name: "美容トレンドノート",
   color: "#FF6B9D",
   icon: "💄",
   subThemes: [
-    // ========== 最優先: 美容医療・施術系（高単価CPA） ==========
+    // ===== スキンケア①: シミ・美白（悩み深い × 商品単価高い = 収益性◎）=====
     {
-      id: "iryou-datsumo",
-      label: "医療脱毛（女性）",
-      articleType: "comparison",
+      id: "bihaku-shimi",
+      label: "シミ・美白ケア",
+      articleType: "problem-solving",
+      articleIntent: "uru",
       keywords: [
-        "医療脱毛 おすすめ 比較",
-        "医療脱毛 料金 相場",
-        "医療脱毛 回数 期間",
-        "医療脱毛 VIO 痛み",
-        "医療脱毛 全身 安い",
+        // ロングテール悩み系（競合少・CVR高）
+        "30代 シミ 急に増えた 原因",
+        "シミ 消したい 自宅ケア 方法",
+        "頬のシミ 薄くする 美容液 選び方",
+        "マスク跡 色素沈着 消す方法",
+        "シミ隠し ファンデーション 塗り方 コツ",
+        "肝斑 シミ 違い 見分け方",
+        "産後 シミ 増えた スキンケア",
+        "トラネキサム酸 シミ 効果 期間",
+        "ビタミンC誘導体 美容液 選び方 濃度",
+        "ハイドロキノン 市販 使い方 注意点",
       ],
     },
+    // ===== スキンケア②: 毛穴・ニキビ（検索ボリューム大 × 悩み継続）=====
     {
-      id: "ipl",
-      label: "IPL・フォトフェイシャル",
-      articleType: "comparison",
+      id: "keana-nikibi",
+      label: "毛穴・ニキビ悩み",
+      articleType: "problem-solving",
+      articleIntent: "atsumeru",
       keywords: [
-        "IPL フォトフェイシャル 効果",
-        "IPL レーザートーニング 違い",
-        "フォトフェイシャル 料金 回数",
-        "シミ取り IPL 比較",
+        "鼻の毛穴 黒ずみ 取れない 原因",
+        "30代 毛穴 開き 改善 スキンケア",
+        "頬の毛穴 たるみ毛穴 見分け方",
+        "大人ニキビ 繰り返す 原因 対策",
+        "顎ニキビ 治らない 内側からケア",
+        "ニキビ跡 赤み 消す方法 自宅",
+        "毛穴 酵素洗顔 正しい使い方",
+        "クレンジング 毛穴 角栓 おすすめ方法",
+        "ピーリング 自宅 やり方 頻度",
+        "毛穴 化粧水 セラミド ビタミンC どっち",
       ],
     },
+    // ===== スキンケア③: エイジングケア（30代ターゲット × 単価高）=====
     {
-      id: "hifu",
-      label: "ハイフ（HIFU）",
-      articleType: "comparison",
+      id: "aging-care",
+      label: "エイジングケア",
+      articleType: "problem-solving",
+      articleIntent: "uru",
       keywords: [
-        "ハイフ 効果 持続期間",
-        "HIFU 料金 比較",
-        "ハイフ たるみ 何回",
-        "医療ハイフ エステハイフ 違い",
+        "30代 ほうれい線 目立ってきた 対策",
+        "目の下 たるみ スキンケア 30代",
+        "おでこ シワ 改善 クリーム",
+        "首のシワ 原因 ケア方法",
+        "レチノール 初心者 使い方 注意点",
+        "ナイアシンアミド レチノール 併用 方法",
+        "30代 基礎化粧品 見直し タイミング",
+        "エイジングケア 始め時 何歳から",
+        "たるみ毛穴 ハリ美容液 選び方",
+        "目元 小じわ アイクリーム 効果ある",
       ],
     },
+    // ===== 美容医療①: 医療脱毛（CPA ¥7,000-10,000 高単価）=====
     {
-      id: "kanpan",
-      label: "肝斑・くすみ治療",
+      id: "datsumo",
+      label: "医療脱毛",
       articleType: "guide",
+      articleIntent: "uru",
       keywords: [
-        "肝斑 治療 比較",
-        "肝斑 レーザートーニング 効果",
-        "くすみ 原因 治療法",
-        "肝斑 トラネキサム酸 効果",
+        // 悩み・不安系（検索意図が明確 = CVR高）
+        "医療脱毛 痛い 我慢できる レベル",
+        "VIO脱毛 恥ずかしい 初めて 流れ",
+        "医療脱毛 何回で終わる リアル体験",
+        "脱毛サロン 医療脱毛 違い 結局どっち",
+        "医療脱毛 後悔 した人 理由",
+        "脱毛 カウンセリング 何聞かれる 準備",
+        "医療脱毛 学生 安い 分割払い",
+        "背中脱毛 自分でできない 対処法",
+        "医療脱毛 当日 やること 注意点",
+        "脱毛後 肌荒れ かゆい 対策",
       ],
     },
+    // ===== 美容医療②: シミ・たるみ施術（CPA高 × 30代の悩み直結）=====
     {
-      id: "laser-toning",
-      label: "レーザートーニング",
-      articleType: "comparison",
+      id: "biyou-clinic",
+      label: "美容クリニック施術",
+      articleType: "guide",
+      articleIntent: "uru",
       keywords: [
-        "レーザートーニング 効果 回数",
-        "レーザートーニング 料金 相場",
-        "レーザートーニング シミ 肝斑",
+        "ハイフ 痛い 効果 いつから わかる",
+        "ボトックス 初めて 不安 副作用",
+        "シミ取り レーザー 料金 1個いくら",
+        "ピーリング クリニック 自宅 違い 効果",
+        "フォトフェイシャル 赤み いつ消える",
+        "美容皮膚科 初めて 何する 費用",
+        "ダーマペン 毛穴 効果 ダウンタイム",
+        "美容医療 やめた方がいい 施術 リスク",
+        "エラボトックス 小顔 効果 持続期間",
+        "美容クリニック 選び方 失敗しない ポイント",
       ],
     },
+    // ===== ヘアケア（検索ボリューム大 × 楽天EC相性◎）=====
     {
-      id: "peeling",
-      label: "ピーリング・毛穴治療",
-      articleType: "howto",
+      id: "hair-care",
+      label: "ヘアケア・頭皮ケア",
+      articleType: "problem-solving",
+      articleIntent: "uru",
       keywords: [
-        "ケミカルピーリング 効果 回数",
-        "毛穴治療 おすすめ クリニック",
-        "ピーリング 料金 比較",
-        "毛穴 黒ずみ 皮膚科 治療",
-      ],
-    },
-    {
-      id: "electroporation",
-      label: "エレクトロポレーション",
-      articleType: "qa",
-      keywords: [
-        "エレクトロポレーション 効果",
-        "エレクトロポレーション イオン導入 違い",
-        "エレクトロポレーション 料金 回数",
-      ],
-    },
-    {
-      id: "botox",
-      label: "エラボトックス・ボトックス",
-      articleType: "qa",
-      keywords: [
-        "エラボトックス 効果 期間",
-        "ボトックス 料金 比較",
-        "ボトックス 副作用 リスク",
-      ],
-    },
-    {
-      id: "online-clinic",
-      label: "オンライン美容診療",
-      articleType: "comparison",
-      keywords: [
-        "オンライン 美容皮膚科 おすすめ",
-        "オンライン診療 美容 比較",
-        "美容皮膚科 予約 取りやすい",
-      ],
-    },
-
-    // ========== 安定化: コスメ・スキンケア（EC = 承認安定） ==========
-    {
-      id: "skincare-aging",
-      label: "エイジングケア化粧品",
-      articleType: "howto",
-      keywords: [
-        "エイジングケア 美容液 おすすめ",
-        "シワ改善 化粧品 ランキング",
-        "たるみ スキンケア 30代",
-        "ほうれい線 ケア 化粧品",
-      ],
-    },
-    {
-      id: "sunscreen",
-      label: "日焼け止め・UVケア",
-      articleType: "comparison",
-      keywords: [
-        "日焼け止め 顔用 おすすめ",
-        "日焼け止め 敏感肌 選び方",
-        "UVケア 下地 比較",
-      ],
-    },
-    {
-      id: "skincare-sensitive",
-      label: "敏感肌スキンケア",
-      articleType: "howto",
-      keywords: [
-        "敏感肌 化粧水 おすすめ",
-        "敏感肌 保湿クリーム 選び方",
-        "肌荒れ スキンケア 成分",
-      ],
-    },
-    {
-      id: "cleansing",
-      label: "クレンジング・洗顔",
-      articleType: "comparison",
-      keywords: [
-        "クレンジング おすすめ 肌に優しい",
-        "毛穴 クレンジング ランキング",
-        "ダブル洗顔不要 おすすめ",
-      ],
-    },
-    {
-      id: "pore-care",
-      label: "毛穴ケア（ホームケア）",
-      articleType: "howto",
-      keywords: [
-        "毛穴ケア 化粧水 おすすめ",
-        "毛穴 黒ずみ スキンケア",
-        "毛穴 引き締め 方法",
-      ],
-    },
-    {
-      id: "acne-care",
-      label: "ニキビ・肌荒れケア",
-      articleType: "qa",
-      keywords: [
-        "大人ニキビ スキンケア おすすめ",
-        "ニキビ跡 ケア 方法",
-        "ニキビ 化粧水 選び方",
-      ],
-    },
-    {
-      id: "shampoo-haircare",
-      label: "シャンプー・ヘアケア",
-      articleType: "comparison",
-      keywords: [
-        "シャンプー おすすめ 市販",
-        "アミノ酸シャンプー ランキング",
-        "ダメージヘア トリートメント おすすめ",
-      ],
-    },
-    {
-      id: "bodycare",
-      label: "ボディケア・デリケートゾーン",
-      articleType: "howto",
-      keywords: [
-        "ボディクリーム おすすめ 保湿",
-        "デリケートゾーン ケア おすすめ",
-        "ボディケア いい匂い 人気",
-      ],
-    },
-    {
-      id: "supplement",
-      label: "美容サプリ・インナーケア",
-      articleType: "qa",
-      keywords: [
-        "コラーゲン サプリ 効果",
-        "ビタミンC サプリ おすすめ",
-        "美容サプリ 選び方 成分",
-      ],
-    },
-    {
-      id: "time-saving",
-      label: "時短スキンケア",
-      articleType: "howto",
-      keywords: [
-        "時短スキンケア おすすめ",
-        "オールインワン おすすめ 30代",
-        "時短美容 スキンケア 方法",
+        "髪 パサパサ 広がる 原因 対策",
+        "頭皮 かゆい フケ 原因 シャンプー",
+        "縮毛矯正 やめたい 移行方法",
+        "白髪 30代 増えてきた 対策",
+        "アミノ酸シャンプー 市販 ドラッグストア",
+        "ヘアオイル つけすぎ べたつき 正しい量",
+        "カラー後 色落ち 防ぐ シャンプー",
+        "髪 ツヤ 出す方法 ドライヤー やり方",
+        "頭皮マッサージ 効果 薄毛 予防",
+        "トリートメント 市販 サロン級 おすすめ",
       ],
     },
   ],
 };
 
 export const ALL_GENRES: Genre[] = [BEAUTY_GENRE];
+
+// ----- テーマ→収益ティアマッピング -----
+// S: クリニック予約CPA ¥7,000-10,000 / A: トライアル購入CPA ¥2,000-2,500 / B: EC報酬 5%
+// ティアマッピング（V3: 6テーマ）
+// S: クリニック予約CPA ¥7,000-10,000 / A: 商品購入CPA ¥2,000-2,500 / B: EC報酬 5%
+export const THEME_TIER_MAP: Record<string, "S" | "A" | "B"> = {
+  "datsumo": "S",        // 医療脱毛 → クリニック予約
+  "biyou-clinic": "S",   // 美容施術 → クリニック予約
+  "bihaku-shimi": "A",   // シミ美白 → 高単価美容液
+  "aging-care": "A",     // エイジング → 高単価化粧品
+  "keana-nikibi": "B",   // 毛穴ニキビ → スキンケアEC
+  "hair-care": "B",      // ヘアケア → シャンプー等EC
+};
 
 // ----- ターゲット年代 -----
 export type TargetAge = "20s" | "30s" | "40s";
@@ -308,5 +249,16 @@ export function getConfig() {
     appPassword: getEnv("APP_PASSWORD"),
     cronSecret: getEnv("CRON_SECRET"),
     activeGenre: getEnv("ACTIVE_GENRE", "beauty"),
+    openaiApiKey: getEnv("OPENAI_API_KEY", ""),
+    // X (Twitter) API credentials
+    xApiKey: getEnv("X_API_KEY", ""),
+    xApiSecret: getEnv("X_API_SECRET", ""),
+    xAccessToken: getEnv("X_ACCESS_TOKEN", ""),
+    xAccessTokenSecret: getEnv("X_ACCESS_TOKEN_SECRET", ""),
+    // Trend collection
+    youtubeApiKey: getEnv("YOUTUBE_API_KEY", ""),
+    ncbiApiKey: getEnv("NCBI_API_KEY", ""),
+    // Fact-check
+    factCheckEnabled: getEnv("FACT_CHECK_ENABLED", "true") === "true",
   };
 }
