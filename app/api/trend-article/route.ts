@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // BlogEngine V2 - Trend → Article Generation
 // ハートビート方式でEdge Runtime 25秒制限を回避
 // ==========================================
@@ -7,7 +7,7 @@ export const runtime = "edge";
 
 import { getConfig } from "@/lib/config";
 import { getVideoDetails } from "@/lib/youtube-captions";
-import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
+`nimport { factCheckArticle } from "@/lib/fact-check";
 
 export async function POST(req: Request) {
   const config = getConfig();
@@ -278,21 +278,45 @@ async function generateTrendArticle(trend: any, config: any, extraText?: string)
   const articleTitle = trend.titleJa || trend.title;
   const slug = (article.keyword || articleTitle).replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, "-").replace(/-+/g, "-").slice(0, 60);
 
-  return {
-    success: true,
-    article: {
-      title: article.title || articleTitle,
-      metaDescription: article.metaDescription || "",
-      htmlContent,
-      keyword: article.keyword || "",
-      slug,
-      tags: article.tags || [],
-      faqSchema: article.faqSchema || [],
-      trendSource: trend.source,
-      trendUrl: trend.sourceUrl,
-      productsFound: rakutenProducts.length,
-    },
+  const resultArticle = {
+    title: article.title || articleTitle,
+    metaDescription: article.metaDescription || '',
+    htmlContent,
+    keyword: article.keyword || '',
+    slug,
+    tags: article.tags || [],
+    faqSchema: article.faqSchema || [],
+    trendSource: trend.source,
+    trendUrl: trend.sourceUrl,
+    productsFound: rakutenProducts.length,
   };
+
+  // ファクトチェック（薬機法・品質チェック）
+  if (config.factCheckEnabled) {
+    try {
+      const fcResult = await factCheckArticle(config.anthropicApiKey, {
+        title: resultArticle.title,
+        htmlContent: resultArticle.htmlContent,
+        metaDescription: resultArticle.metaDescription,
+        keyword: resultArticle.keyword || '',
+        tags: resultArticle.tags,
+        themeLabel: trend.titleJa || trend.title || resultArticle.keyword || '',
+      });
+      if (fcResult.success) {
+        resultArticle.title = fcResult.improved.title;
+        resultArticle.htmlContent = fcResult.improved.htmlContent;
+        resultArticle.metaDescription = fcResult.improved.metaDescription;
+        resultArticle.tags = fcResult.improved.tags;
+        console.log('[Trend FactCheck] ' + fcResult.report.changes.length + '件の改善を適用');
+      } else {
+        console.warn('[Trend FactCheck] レビュー失敗（元の記事を使用）:', fcResult.error);
+      }
+    } catch (e) {
+      console.warn('[Trend FactCheck] エラー（元の記事を使用）:', (e as any).message);
+    }
+  }
+
+  return { success: true, article: resultArticle };
 }
 
 function extractSearchKeywords(trend: any): string[] {
