@@ -19,7 +19,7 @@ export interface ComplianceResult {
 export function autoFixCompliance(html: string): { html: string; result: ComplianceResult } {
   const fixes: string[] = [];
   const warnings: string[] = [];
-  let fixedHtml = html;
+  let fixedHtml = html || "";
 
   // 1. PR表記チェック — 記事冒頭にpr-noticeがなければ挿入
   if (!fixedHtml.includes('pr-notice')) {

@@ -142,6 +142,7 @@ function isBeautyProduct(genreId: string, itemName: string): boolean {
     "カーテン", "ラグ", "家具", "収納",
   ];
 
+  if (!itemName) return false;
   const nameContainsExclude = excludeKeywords.some((kw) => itemName.includes(kw));
   if (nameContainsExclude) return false;
 
@@ -216,7 +217,7 @@ function calculateThemeRelevance(itemName: string, themeId: string): number {
   const config = THEME_GENRE_MAP[themeId];
   if (!config) return 50; // テーマ不明なら中立
 
-  const nameLower = itemName.toLowerCase();
+  const nameLower = (itemName || "").toLowerCase();
   let matchCount = 0;
   for (const term of config.relevanceTerms) {
     if (nameLower.includes(term.toLowerCase())) {
@@ -376,7 +377,7 @@ export async function searchRakutenProducts(
   // ユーザー入力キーワードが3文字以上なら追加絞り込み
   if (keyword && keyword.length >= 3 && themeConfig) {
     const keywordFiltered = filtered.filter((p) =>
-      p.itemName.toLowerCase().includes(keyword.toLowerCase())
+      p.itemName && p.itemName.toLowerCase().includes(keyword.toLowerCase())
     );
     // 絞り込み結果が3件以上あれば適用、少なすぎれば無視
     if (keywordFiltered.length >= 3) {

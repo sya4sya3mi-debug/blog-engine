@@ -77,7 +77,7 @@ export function buildEyecatchPrompt(
 
   // 比較・ランキング記事対応
   const isComparison = themeLabel === "商品比較";
-  const isRanking = themeLabel === "商品ランキング" || title.includes("ランキング") || title.includes("選");
+  const isRanking = themeLabel === "商品ランキング" || (title || "").includes("ランキング") || (title || "").includes("選");
   const layoutHint = isRanking
     ? "Layout: Multiple beauty products arranged in a visually appealing podium or stepped arrangement suggesting a ranking. Gold, silver, bronze accents."
     : isComparison

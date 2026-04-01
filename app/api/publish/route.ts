@@ -144,8 +144,8 @@ export async function POST(req: NextRequest) {
         // 予約投稿の日時フォーマット修正（datetime-localは秒がないのでWordPress用に追加）
         let wpDate: string | undefined;
         if (wpStatus === "future" && scheduledDate) {
-          wpDate = scheduledDate.includes("T")
-            ? (scheduledDate.length <= 16 ? scheduledDate + ":00" : scheduledDate)
+          wpDate = (scheduledDate || "").includes("T")
+            ? (scheduledDate!.length <= 16 ? scheduledDate + ":00" : scheduledDate)
             : scheduledDate;
         }
         console.log(`[Publish] status=${wpStatus}, date=${wpDate}, publishStatus=${publishStatus}`);
@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
             xResult = { success: false, error: e.message };
           }
           // 403リトライ（URLなしでリトライ）
-          if (!xResult?.success && xResult?.error?.includes("403")) {
+          if (!xResult?.success && typeof xResult?.error === "string" && xResult.error.includes("403")) {
             try {
               const { postToX: postToXFn } = await import("@/lib/x-poster");
               const simpleTweet = `${article.title}\n\n詳しくはプロフのリンクから👆`;

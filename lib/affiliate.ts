@@ -80,7 +80,7 @@ export function replaceAffiliatePlaceholders(
   links: AffiliateLink[],
   tieredPartners?: { S: AffiliatePartner[]; A: AffiliatePartner[]; B: AffiliatePartner[] },
 ): string {
-  const validLinks = (links || []).filter((l) => l.html.trim());
+  const validLinks = (links || []).filter((l) => l.html && l.html.trim());
 
   // リンクが空でも cta-slot の置換は試みる
   if (validLinks.length === 0) return replaceCtaSlots(htmlContent, tieredPartners, []);
@@ -145,7 +145,7 @@ function replaceCtaSlots(
   }
 
   // tieredPartners がない場合 → fallbackLinks（AffiliateLink[]）で全cta-slotを置換
-  const validFallback = fallbackLinks?.filter((l) => l.html.trim()) || [];
+  const validFallback = fallbackLinks?.filter((l) => l.html && l.html.trim()) || [];
   if (validFallback.length === 0) return html;
 
   let fallbackIndex = 0;

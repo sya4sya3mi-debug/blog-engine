@@ -1241,7 +1241,7 @@ function buildCategoryPrompt(
   const ageLabel = targetAge === "20s" ? "20代" : targetAge === "30s" ? "30代" : "40代";
 
   // サブテーマの解決
-  const selectedSubs = subThemeIds && subThemeIds.length > 0
+  const selectedSubs = Array.isArray(subThemeIds) && subThemeIds.length > 0
     ? cat.subThemes.filter(s => subThemeIds.includes(s.id))
     : [];
   const isMultiSub = selectedSubs.length >= 2 && cat.multiSelect;
@@ -1576,7 +1576,7 @@ export async function generatePersonalReviewArticle(
     for (let i = 0; i < photoUrls.length; i++) {
       const url = photoUrls[i];
       // この写真URLが記事内に存在するかチェック
-      if (!article.htmlContent.includes(url)) {
+      if (article.htmlContent && !article.htmlContent.includes(url)) {
         const desc = photoDescriptions[i] || `写真${i + 1}`;
         const photoHtml = `<figure style="text-align:center;margin:24px 0"><img src="${url}" alt="${review.productName} ${desc}" style="max-width:640px;width:100%;height:auto;border-radius:8px" /><figcaption style="font-size:12px;color:#888;margin-top:6px">${review.productName} ${desc}（筆者撮影）</figcaption></figure>`;
 
