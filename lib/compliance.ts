@@ -16,7 +16,7 @@ export interface ComplianceResult {
  * - 体験談ディスクレーマー確認
  * - ランキング根拠チェック
  */
-export function autoFixCompliance(html: string): { html: string; result: ComplianceResult } {
+export function autoFixCompliance(html: string | undefined | null): { html: string; result: ComplianceResult } {
   const fixes: string[] = [];
   const warnings: string[] = [];
   let fixedHtml = html || "";

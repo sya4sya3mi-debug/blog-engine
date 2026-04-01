@@ -14,6 +14,9 @@ export async function POST(req: Request) {
   const config = getConfig();
   const body = await req.json();
   const { categoryId, targetAge, subThemeIds, suggestTopic } = body;
+  const safeSubThemeIds = Array.isArray(subThemeIds)
+    ? subThemeIds.filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
+    : [];
   const balloonOpts = body.enableBalloon ? { authorIconUrl: body.authorIconUrl as string | undefined, authorName: body.authorName as string | undefined } : undefined;
 
   if (!categoryId) {
@@ -50,7 +53,7 @@ export async function POST(req: Request) {
           categoryId,
           existingPosts,
           targetAge || "30s",
-          subThemeIds,
+          safeSubThemeIds,
           suggestTopic,
           balloonOpts,
         );

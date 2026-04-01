@@ -255,6 +255,9 @@ export default function Dashboard() {
   const [partners, setPartners] = useState<AffiliatePartner[]>([]);
   const [editingPartner, setEditingPartner] = useState<AffiliatePartner | null>(null);
   const [affFilterTheme, setAffFilterTheme] = useState("all");
+  const safePartners = Array.isArray(partners) ? partners : [];
+  const safeSelectedSubThemes = Array.isArray(selectedSubThemes) ? selectedSubThemes : [];
+  const safeReviewSkinConcerns = Array.isArray(reviewSkinConcerns) ? reviewSkinConcerns : [];
 
   // Rakuten search state
   const [rakutenKeyword, setRakutenKeyword] = useState("");
@@ -290,7 +293,9 @@ export default function Dashboard() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem("blogengine_partners");
-      if (saved) setPartners(JSON.parse(saved));
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      setPartners(Array.isArray(parsed) ? parsed : []);
     } catch {}
   }, []);
 
@@ -302,7 +307,7 @@ export default function Dashboard() {
 
   // Get affiliate links for a theme (sorted by priority)
   function getLinksForTheme(themeId: string): AffiliateLink[] {
-    return partners
+    return safePartners
       .filter((p) => p.active && Array.isArray(p.themeIds) && p.themeIds.includes(themeId) && (p.html || "").trim())
       .sort((a, b) => b.priority - a.priority)
       .map((p) => ({ themeId, html: p.html }));
@@ -414,7 +419,7 @@ export default function Dashboard() {
         const catRes = await fetch("/api/generate-category", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${pwd}` },
-          body: JSON.stringify({ categoryId: selectedCategory, targetAge, subThemeIds: selectedSubThemes, suggestTopic: selectedSuggest || undefined, enableBalloon, authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined, authorName: enableBalloon ? (authorName || "みお") : undefined }),
+          body: JSON.stringify({ categoryId: selectedCategory, targetAge, subThemeIds: safeSelectedSubThemes, suggestTopic: selectedSuggest || undefined, enableBalloon, authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined, authorName: enableBalloon ? (authorName || "みお") : undefined }),
           signal: catController.signal,
         });
         clearTimeout(catTimeoutId);
@@ -466,7 +471,7 @@ export default function Dashboard() {
               repurchase: reviewRepurchase,
               price: reviewPrice ? Number(reviewPrice) : undefined,
               channel: reviewChannel,
-              skinConcerns: reviewSkinConcerns,
+              skinConcerns: safeReviewSkinConcerns,
               comparisonNote: reviewComparisonNote,
             },
             photoUrls,
@@ -1134,13 +1139,16 @@ export default function Dashboard() {
                           </div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                             {subs.map((sub) => {
-                              const isSelected = selectedSubThemes.includes(sub.id);
+                              const isSelected = safeSelectedSubThemes.includes(sub.id);
                               return (
                                 <button
                                   key={sub.id}
                                   onClick={() => {
                                     if (isMulti) {
-                                      setSelectedSubThemes(prev => isSelected ? prev.filter(s => s !== sub.id) : [...prev, sub.id]);
+                                      setSelectedSubThemes((prev) => {
+                                        const list = Array.isArray(prev) ? prev : [];
+                                        return isSelected ? list.filter((s) => s !== sub.id) : [...list, sub.id];
+                                      });
                                     } else {
                                       setSelectedSubThemes(isSelected ? [] : [sub.id]);
                                     }
@@ -1157,9 +1165,9 @@ export default function Dashboard() {
                               );
                             })}
                           </div>
-                          {isMulti && selectedSubThemes.length >= 2 && (
+                          {isMulti && safeSelectedSubThemes.length >= 2 && (
                             <div style={{ marginTop: 8, fontSize: 11, color: C.green, padding: "6px 10px", background: `${C.green}11`, borderRadius: 6 }}>
-                              {selectedSubThemes.length}つ選択中 → 比較ガイド記事が生成されます
+                              {safeSelectedSubThemes.length}つ選択中 → 比較ガイド記事が生成されます
                             </div>
                           )}
                         </div>
@@ -1167,7 +1175,7 @@ export default function Dashboard() {
                     })()}
 
                     {/* 注目トピック自動提案 */}
-                    {selectedSubThemes.length > 0 && (() => {
+                    {safeSelectedSubThemes.length > 0 && (() => {
                       const subKeywordMap: Record<string, string> = {
                         "clinic-datsumo": "医療脱毛", "clinic-shimi": "シミ取り レーザー", "clinic-hifu": "ハイフ 美容",
                         "clinic-dermapen": "ダーマペン", "clinic-botox": "ボトックス 美容", "clinic-peeling": "ピーリング 美容",
@@ -1178,7 +1186,7 @@ export default function Dashboard() {
                         "medical-types": "美容医療 施術 種類", "medical-downtime": "美容施術 ダウンタイム", "medical-cost": "美容医療 費用",
                         "medical-counseling": "美容クリニック カウンセリング", "medical-aftercare": "美容施術 アフターケア", "medical-vs-esthe": "美容皮膚科 エステ 違い",
                       };
-                      const lastSub = selectedSubThemes[selectedSubThemes.length - 1];
+                      const lastSub = safeSelectedSubThemes[safeSelectedSubThemes.length - 1];
                       const searchKw = subKeywordMap[lastSub] || "";
 
                       // サブテーマ変更時に自動取得
@@ -1373,7 +1381,7 @@ export default function Dashboard() {
                           <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4 }}>肌悩み（複数選択可）</label>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             {["シミ", "毛穴", "乾燥", "ニキビ", "シワ", "くすみ", "たるみ", "敏感"].map((c) => (
-                              <button key={c} onClick={() => setReviewSkinConcerns((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c])} style={{ padding: "4px 12px", borderRadius: 20, border: `1px solid ${reviewSkinConcerns.includes(c) ? C.accent : C.borderLight}`, background: reviewSkinConcerns.includes(c) ? `${C.accent}22` : "transparent", color: reviewSkinConcerns.includes(c) ? C.accent : C.textDim, fontSize: 12, cursor: "pointer" }}>{c}</button>
+                              <button key={c} onClick={() => setReviewSkinConcerns((prev) => { const list = Array.isArray(prev) ? prev : []; return list.includes(c) ? list.filter((x) => x !== c) : [...list, c]; })} style={{ padding: "4px 12px", borderRadius: 20, border: `1px solid ${safeReviewSkinConcerns.includes(c) ? C.accent : C.borderLight}`, background: safeReviewSkinConcerns.includes(c) ? `${C.accent}22` : "transparent", color: safeReviewSkinConcerns.includes(c) ? C.accent : C.textDim, fontSize: 12, cursor: "pointer" }}>{c}</button>
                             ))}
                           </div>
                         </div>

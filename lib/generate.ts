@@ -135,6 +135,42 @@ ${fontLink}
 `;
 }
 
+/**
+ * 吹き出しHTMLのアイコンを強制的に正しいものに差し替える（Claude生成後の後処理）
+ * Claudeがテンプレートを改変してアイコンが欠落・変更されるケースに対応
+ */
+export function fixBalloonIcons(html: string, authorIconUrl?: string, authorName?: string): string {
+  if (!authorIconUrl) return html;
+  const name = authorName || "みお";
+  const correctIconHtml = `<img src="${authorIconUrl}" alt="${name}" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:2px solid #FFE066;object-fit:cover;display:block" />`;
+
+  // パターン1: 絵文字デフォルトアイコン（👩 div）を正しいGravatar imgに差し替え
+  let fixed = html.replace(
+    /<div style="[^"]*width:60px;height:60px;border-radius:50%;background:#FFE066[^"]*">[^<]*<\/div>/g,
+    correctIconHtml,
+  );
+
+  // パターン2: 吹き出しブロック内のimgタグのsrcがGravatarでない場合に修正
+  // 吹き出し構造: display:flex;align-items:flex-start;gap:14px 内の最初のimg
+  fixed = fixed.replace(
+    /(<div style="[^"]*display:\s*flex;align-items:\s*flex-start;gap:\s*14px[^"]*">[\s\S]*?)<img\s+src="(?!data:)[^"]*"\s+alt="[^"]*"[^>]*?style="[^"]*border-radius:\s*50%[^"]*"[^>]*?\/?>/g,
+    (match, prefix) => {
+      // 既にGravatarのURLが含まれていればスキップ
+      if (match.includes(authorIconUrl)) return match;
+      return match.replace(/<img\s+src="(?!data:)[^"]*"\s+alt="[^"]*"[^>]*?style="[^"]*border-radius:\s*50%[^"]*"[^>]*?\/?>/,
+        correctIconHtml);
+    },
+  );
+
+  // パターン3: 吹き出しブロック内にimgがなく、名前だけある場合にアイコンを挿入
+  fixed = fixed.replace(
+    /(<div style="[^"]*flex-shrink:\s*0;width:\s*68px;text-align:\s*center[^"]*">)(\s*<div style="[^"]*font-size:\s*11px)/g,
+    `$1${correctIconHtml}$2`,
+  );
+
+  return fixed;
+}
+
 // ----- 法令遵守ブロック（全記事共通） -----
 const COMPLIANCE_BLOCK = `
 ## 法令遵守ルール（必ず守ること）
@@ -1081,7 +1117,11 @@ export async function generateArticle(
   }
   const responseText = await callClaude(apiKey, prompt);
   const parsed = extractJSON(responseText);
-  return buildGeneratedArticle(parsed, keyword, theme.label);
+  const article = buildGeneratedArticle(parsed, keyword, theme.label);
+  if (balloonOpts?.authorIconUrl) {
+    article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+  return article;
 }
 
 /** 商品指定生成（手動 / 複数商品対応） */
@@ -1130,7 +1170,11 @@ export async function generateProductArticleWithReviews(
   const responseText = await callClaude(apiKey, prompt);
   const parsed = extractJSON(responseText);
   const label = comparisonMode?.enabled ? "商品比較" : "商品レビュー";
-  return buildGeneratedArticle(parsed, customKeyword || products.join(" / "), label);
+  const article = buildGeneratedArticle(parsed, customKeyword || products.join(" / "), label);
+  if (balloonOpts?.authorIconUrl) {
+    article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+  return article;
 }
 
 // ==========================================
@@ -1236,13 +1280,17 @@ function buildCategoryPrompt(
 ): string {
   const cat = CATEGORY_CONFIGS[categoryId];
   if (!cat) throw new Error(`Unknown category: ${categoryId}`);
+  const subThemes = Array.isArray(cat.subThemes) ? cat.subThemes : [];
+  const normalizedSubThemeIds = Array.isArray(subThemeIds)
+    ? subThemeIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
 
   const d = getDateLabels();
   const ageLabel = targetAge === "20s" ? "20代" : targetAge === "30s" ? "30代" : "40代";
 
   // サブテーマの解決
-  const selectedSubs = Array.isArray(subThemeIds) && subThemeIds.length > 0
-    ? cat.subThemes.filter(s => subThemeIds.includes(s.id))
+  const selectedSubs = normalizedSubThemeIds.length > 0
+    ? subThemes.filter((s) => normalizedSubThemeIds.includes(s.id))
     : [];
   const isMultiSub = selectedSubs.length >= 2 && cat.multiSelect;
 
@@ -1269,10 +1317,10 @@ function buildCategoryPrompt(
     subThemeContext = `\n\n## テーマ詳細\n「${selectedSubs[0].label}」に特化した専門ガイド記事を作成してください。`;
   } else {
     // サブテーマ未選択 → カテゴリー全体のガイド
-    effectiveSections = cat.subThemes.length > 0
+    effectiveSections = subThemes.length > 0
       ? [
           `${cat.label}とは`,
-          ...cat.subThemes.slice(0, 4).map(s => `${s.label}の基礎知識`),
+          ...subThemes.slice(0, 4).map((s) => `${s.label}の基礎知識`),
           "よくある質問（FAQ）",
         ]
       : cat.sections;
@@ -1390,7 +1438,11 @@ export async function generateCategoryArticle(
   // カテゴリー記事は長文なのでmax_tokensを増やす
   const responseText = await callClaude(apiKey, prompt, 12000);
   const parsed = extractJSON(responseText);
-  return buildGeneratedArticle(parsed, cat.seoKeywords[0], cat.label);
+  const article = buildGeneratedArticle(parsed, cat.seoKeywords[0], cat.label);
+  if (balloonOpts?.authorIconUrl) {
+    article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+  return article;
 }
 
 /** カテゴリー設定をexport（UI用） */
@@ -1613,5 +1665,8 @@ export async function generatePersonalReviewArticle(
   };
   article.htmlContent += `\n<script type="application/ld+json">${JSON.stringify(reviewSchema)}</script>`;
 
+  if (balloonOpts?.authorIconUrl) {
+    article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
   return article;
 }
