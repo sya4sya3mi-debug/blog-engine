@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // BlogEngine V2 - Category Article Generation
 // カテゴリー記事（ピラーページ）を生成
 // WordPress既存記事を自動で内部リンクとして挿入
@@ -8,7 +8,8 @@ export const runtime = "edge";
 
 import { getConfig } from "@/lib/config";
 import { generateCategoryArticle } from "@/lib/generate";
-`nimport { factCheckArticle } from "@/lib/fact-check";
+import { WordPressClient } from "@/lib/wordpress";
+import { factCheckArticle } from "@/lib/fact-check";
 
 export async function POST(req: Request) {
   const config = getConfig();
@@ -65,21 +66,21 @@ export async function POST(req: Request) {
               title: article.title,
               htmlContent: article.htmlContent,
               metaDescription: article.metaDescription,
-              keyword: article.keyword || categoryId || '',
+              keyword: article.keyword || categoryId || "",
               tags: article.tags,
-              themeLabel: article.themeLabel || categoryId || '',
+              themeLabel: article.themeLabel || categoryId || "",
             });
             if (fcResult.success) {
               article.title = fcResult.improved.title;
               article.htmlContent = fcResult.improved.htmlContent;
               article.metaDescription = fcResult.improved.metaDescription;
               article.tags = fcResult.improved.tags;
-              console.log('[Category FactCheck] ' + fcResult.report.changes.length + '件の改善を適用');
+              console.log("[Category FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
             } else {
-              console.warn('[Category FactCheck] レビュー失敗（元の記事を使用）:', fcResult.error);
+              console.warn("[Category FactCheck] レビュー失敗（元の記事を使用）:", fcResult.error);
             }
-          } catch (e) {
-            console.warn('[Category FactCheck] エラー（元の記事を使用）:', (e as any).message);
+          } catch (e: any) {
+            console.warn("[Category FactCheck] エラー（元の記事を使用）:", e.message);
           }
         }
 

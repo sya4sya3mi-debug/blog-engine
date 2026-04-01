@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // BlogEngine V2 - Manual Generate Endpoint
 // Edge Runtime + ストリーミングでVercel Hobbyタイムアウト回避
 // ==========================================
@@ -7,7 +7,8 @@ import { NextRequest } from "next/server";
 import { getConfig, ALL_GENRES } from "@/lib/config";
 import { generateArticle, generateProductArticleWithReviews, TargetAge } from "@/lib/generate";
 import { AffiliateLink, replaceAffiliatePlaceholders } from "@/lib/affiliate";
-`nimport { factCheckArticle } from "@/lib/fact-check";
+import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
+import { factCheckArticle } from "@/lib/fact-check";
 
 // Edge Runtimeを使用（Hobby: 25秒 → ストリーミングで延長可能）
 export const runtime = "edge";
@@ -193,21 +194,21 @@ export async function POST(req: NextRequest) {
               title: article.title,
               htmlContent: article.htmlContent,
               metaDescription: article.metaDescription,
-              keyword: article.keyword || '',
+              keyword: article.keyword || "",
               tags: article.tags,
-              themeLabel: article.themeLabel || keyword || '',
+              themeLabel: article.themeLabel || keyword || "",
             });
             if (fcResult.success) {
               article.title = fcResult.improved.title;
               article.htmlContent = fcResult.improved.htmlContent;
               article.metaDescription = fcResult.improved.metaDescription;
               article.tags = fcResult.improved.tags;
-              console.log('[Generate FactCheck] ' + fcResult.report.changes.length + '件の改善を適用');
+              console.log("[Generate FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
             } else {
-              console.warn('[Generate FactCheck] レビュー失敗（元の記事を使用）:', fcResult.error);
+              console.warn("[Generate FactCheck] レビュー失敗（元の記事を使用）:", fcResult.error);
             }
-          } catch (e) {
-            console.warn('[Generate FactCheck] エラー（元の記事を使用）:', (e as any).message);
+          } catch (e: any) {
+            console.warn("[Generate FactCheck] エラー（元の記事を使用）:", e.message);
           }
         }
 
