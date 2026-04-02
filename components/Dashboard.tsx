@@ -206,6 +206,9 @@ export default function Dashboard() {
     return [];
   });
   const [articleThemesLoading, setArticleThemesLoading] = useState(false);
+  // カテゴリーテーマ提案（三者会議）
+  const [categoryThemeSuggestions, setCategoryThemeSuggestions] = useState<any[]>([]);
+  const [categoryThemesLoading, setCategoryThemesLoading] = useState(false);
   // 商品モード: 商品名とアフィリエイトHTMLをセットで管理
   interface ProductEntry { name: string; affiliateHtml?: string; imageUrl?: string; price?: number; profitScore?: number; }
   const [products, setProducts] = useState<ProductEntry[]>([{ name: "" }]);
@@ -1067,6 +1070,74 @@ export default function Dashboard() {
               <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 16, padding: 28 }}>
                 {genMode === "category" ? (
                   <>
+                    {/* カテゴリー三者会議テーマ提案 */}
+                    <div style={{ marginBottom: 20 }}>
+                      <button
+                        onClick={async () => {
+                          setCategoryThemesLoading(true);
+                          try {
+                            const h: HeadersInit = { "Content-Type": "application/json" };
+                            const res = await fetch("/api/category-theme-suggest", { method: "POST", headers: h });
+                            let trimmed = "";
+                            const reader = res.body?.getReader();
+                            const dec = new TextDecoder();
+                            if (reader) {
+                              while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                trimmed += dec.decode(value);
+                              }
+                            }
+                            const jsonMatch = trimmed.trim().match(/{[sS]*"(success|error|themes)"[sS]*}/);
+                            if (jsonMatch) {
+                              const data = JSON.parse(jsonMatch[0]);
+                              if (data.themes) setCategoryThemeSuggestions(data.themes);
+                            }
+                          } catch (e: any) { console.error(e); }
+                          setCategoryThemesLoading(false);
+                        }}
+                        disabled={categoryThemesLoading}
+                        style={{ padding: "12px 20px", borderRadius: 10, border: "none", background: categoryThemesLoading ? "#1A1A28" : "linear-gradient(135deg, #FFD700, #FF6B9D, #00D4FF)", color: categoryThemesLoading ? C.textMuted : "#000", fontWeight: 800, fontSize: 13, cursor: categoryThemesLoading ? "not-allowed" : "pointer", width: "100%", marginBottom: 10 }}
+                      >
+                        {categoryThemesLoading ? "🧠 3人のプロが会議中... (約30秒)" : "🧠 3人のプロにカテゴリーテーマを聞く"}
+                      </button>
+                      {categoryThemeSuggestions.length > 0 && (
+                        <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                          {categoryThemeSuggestions.map((t: any, i: number) => (
+                            <div key={i} style={{ padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${t.rank <= 2 ? C.accent : C.borderLight}`, background: C.bgCard }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 800, color: t.rank <= 2 ? C.accent : C.textDim }}>#{t.rank}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 700 }}>{t.topic}</span>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setSelectedCategory(t.categoryId);
+                                    setSelectedSubThemes(t.subThemeIds || []);
+                                    setSelectedSuggest(t.suggestTopic || "");
+                                  }}
+                                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.accent}55`, background: "transparent", color: C.accent, fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                                >
+                                  このテーマで作成 →
+                                </button>
+                              </div>
+                              <div style={{ fontSize: 11, color: C.accentAlt, marginBottom: 4 }}>{t.keyword}</div>
+                              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>{t.reason}</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                                {t.categoryId && <span style={{ padding: "2px 8px", borderRadius: 10, background: `${C.accent}22`, color: C.accent, fontSize: 10, fontWeight: 600 }}>{({ "clinic-comparison": "🏥 クリニック", "cosmetics": "💄 コスメ", "basics-howto": "📖 基礎知識", "medical-beauty": "💉 美容医療" } as any)[t.categoryId] || t.categoryId}</span>}
+                                {t.isMulti && <span style={{ padding: "2px 8px", borderRadius: 10, background: `${C.green}22`, color: C.green, fontSize: 10 }}>比較ガイド</span>}
+                                {t.scores && <><span style={{ padding: "2px 8px", borderRadius: 10, background: "#FF69B422", color: "#FF69B4", fontSize: 10 }}>美容{t.scores.beauty}</span><span style={{ padding: "2px 8px", borderRadius: 10, background: "#FFD70022", color: "#FFD700", fontSize: 10 }}>収益{t.scores.affiliate}</span><span style={{ padding: "2px 8px", borderRadius: 10, background: "#00D4FF22", color: "#00D4FF", fontSize: 10 }}>SEO{t.scores.seo}</span></>}
+                              </div>
+                              {t.expert_comments && (
+                                <div style={{ fontSize: 10, color: C.textMuted }}>
+                                  🧴 {t.expert_comments.misaki} / 💰 {t.expert_comments.ryota} / 🔥 {t.expert_comments.yuna}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {/* カテゴリー記事モード */}
                     <div style={{ marginBottom: 20 }}>
                       <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 8, fontWeight: 600 }}>カテゴリーを選択</label>
