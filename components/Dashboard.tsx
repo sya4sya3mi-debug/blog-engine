@@ -462,6 +462,7 @@ export default function Dashboard() {
         setGenResult({ ok: true, title: pasteData.article.title, articleData: pasteData.article, pendingPublish: true });
         setPreviewItem(pasteItem);
         setGenerating(false);
+        runFactCheck(pasteData.article);
         return;
       }
       if (genMode === "category") {

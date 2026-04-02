@@ -1,13 +1,13 @@
 // ==========================================
 // BlogEngine V2 - Paste Article Generation
 // 他社AI文章をベースにClaude APIでリライト生成
+// ファクトチェックはクライアント側で実行（Edge Function時間制限対策）
 // ==========================================
 
 export const runtime = "edge";
 
 import { getConfig } from "@/lib/config";
 import { generatePasteArticle } from "@/lib/generate";
-import { factCheckArticle } from "@/lib/fact-check";
 
 export async function POST(req: Request) {
   const config = getConfig();
@@ -37,31 +37,6 @@ export async function POST(req: Request) {
           targetAge || "30s",
           balloonOpts,
         );
-
-        // ファクトチェック（薬機法・品質チェック）
-        if (config.factCheckEnabled) {
-          try {
-            const fcResult = await factCheckArticle(config.anthropicApiKey, {
-              title: article.title,
-              htmlContent: article.htmlContent,
-              metaDescription: article.metaDescription,
-              keyword: article.keyword || pasteKeyword || "",
-              tags: article.tags,
-              themeLabel: article.themeLabel || "テキスト貼り付け",
-            });
-            if (fcResult.success) {
-              article.title = fcResult.improved.title;
-              article.htmlContent = fcResult.improved.htmlContent;
-              article.metaDescription = fcResult.improved.metaDescription;
-              article.tags = fcResult.improved.tags;
-              console.log("[Paste FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
-            } else {
-              console.warn("[Paste FactCheck] レビュー失敗（元の記事を使用）:", fcResult.error);
-            }
-          } catch (e: any) {
-            console.warn("[Paste FactCheck] エラー（元の記事を使用）:", e.message);
-          }
-        }
 
         clearInterval(heartbeat);
         controller.enqueue(encoder.encode(JSON.stringify({
