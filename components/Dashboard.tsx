@@ -459,7 +459,7 @@ export default function Dashboard() {
           createdAt: new Date().toLocaleString("ja-JP"),
         };
         setHistory((prev) => [pasteItem, ...prev]);
-        setGenResult({ success: true, articleData: pasteData.article, pendingPublish: true });
+        setGenResult({ ok: true, title: pasteData.article.title, articleData: pasteData.article, pendingPublish: true });
         setPreviewItem(pasteItem);
         setGenerating(false);
         return;
@@ -493,7 +493,8 @@ export default function Dashboard() {
         };
         setHistory((prev) => [catItem, ...prev]);
         setGenResult({
-          success: true,
+          ok: true,
+          title: catData.article.title,
           articleData: catData.article,
           pendingPublish: true,
         });
@@ -551,7 +552,7 @@ export default function Dashboard() {
           createdAt: new Date().toLocaleString("ja-JP"),
         };
         setHistory((prev) => [prItem, ...prev]);
-        setGenResult({ success: true, articleData: article, pendingPublish: true, productNames: [reviewProductName] });
+        setGenResult({ ok: true, title: article.title, articleData: article, pendingPublish: true, productNames: [reviewProductName] });
         setPreviewItem(prItem);
         setGenerating(false);
         runFactCheck(article);
