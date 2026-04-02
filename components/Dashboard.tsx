@@ -419,41 +419,49 @@ export default function Dashboard() {
     try {
       const body: any = { postToWP, postToX, targetAge, generateImages, hasExperience, experienceNote: hasExperience ? experienceNote : "", pricePreset: rakutenPricePreset, enableBalloon, authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined, authorName: enableBalloon ? (authorName || "みお") : undefined };
       if (genMode === "paste") {
-        // テキスト貼り付けモード（APIコール不要）
+        // テキスト貼り付けモード（Claude APIでリライト生成）
         if (!pasteTitle.trim() || !pasteHtml.trim()) {
           setGenResult({ ok: false, error: "タイトルと本文を入力してください" });
           setGenerating(false);
           return;
         }
-        const slug = pasteKeyword.trim()
-          ? pasteKeyword.trim().replace(/[^a-zA-Z0-9぀-鿿]/g, "-").replace(/-+/g, "-").slice(0, 60)
-          : "article-" + Date.now();
-        const article = {
-          title: pasteTitle.trim(),
-          seoTitle: pasteTitle.trim(),
-          metaDescription: "",
-          htmlContent: pasteHtml.trim(),
-          slug,
-          focusKeyword: pasteKeyword.trim(),
-          keyword: pasteKeyword.trim(),
-          themeLabel: "テキスト貼り付け",
-          tags: [] as string[],
-        };
+        const pwd = getPwd();
+        const pasteController = new AbortController();
+        const pasteTimeoutId = setTimeout(() => pasteController.abort(), 180000);
+        const pasteRes = await fetch("/api/generate-paste", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${pwd}` },
+          body: JSON.stringify({
+            pasteTitle: pasteTitle.trim(),
+            pasteHtml: pasteHtml.trim(),
+            pasteKeyword: pasteKeyword.trim(),
+            targetAge,
+            enableBalloon,
+            authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined,
+            authorName: enableBalloon ? (authorName || "みお") : undefined,
+          }),
+          signal: pasteController.signal,
+        });
+        clearTimeout(pasteTimeoutId);
+        const pasteRaw = await pasteRes.text();
+        const pasteJsonMatch = pasteRaw.trim().match(/\{[\s\S]*\}$/);
+        if (!pasteJsonMatch) throw new Error("テキスト貼り付け記事の生成に失敗しました");
+        const pasteData = JSON.parse(pasteJsonMatch[0]);
+        if (!pasteData.success) throw new Error(pasteData.error || "生成エラー");
         const pasteItem: HistoryItem = {
           id: Date.now(),
-          title: article.title,
-          keyword: article.keyword,
-          themeLabel: article.themeLabel,
+          title: pasteData.article.title,
+          keyword: pasteData.article.keyword,
+          themeLabel: pasteData.article.themeLabel,
           mode: "paste",
-          htmlContent: article.htmlContent,
-          metaDescription: article.metaDescription,
+          htmlContent: pasteData.article.htmlContent,
+          metaDescription: pasteData.article.metaDescription,
           createdAt: new Date().toLocaleString("ja-JP"),
         };
         setHistory((prev) => [pasteItem, ...prev]);
-        setGenResult({ success: true, articleData: article, pendingPublish: true });
+        setGenResult({ success: true, articleData: pasteData.article, pendingPublish: true });
         setPreviewItem(pasteItem);
         setGenerating(false);
-        runFactCheck(article);
         return;
       }
       if (genMode === "category") {

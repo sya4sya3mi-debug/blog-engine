@@ -1670,3 +1670,77 @@ export async function generatePersonalReviewArticle(
   }
   return article;
 }
+
+/** テキスト貼り付けモード — 他社AI文章をベースにClaude APIでリライト生成 */
+export async function generatePasteArticle(
+  apiKey: string,
+  pasteTitle: string,
+  pasteHtml: string,
+  pasteKeyword: string,
+  targetAge: TargetAge = "30s",
+  balloonOpts?: { authorIconUrl?: string; authorName?: string },
+): Promise<GeneratedArticle> {
+  const { year, monthLabel, seasonLabel } = getDateLabels();
+  const ageLabel = targetAge === "20s" ? "20代" : targetAge === "30s" ? "30代" : "40代";
+  const keywordNote = pasteKeyword ? `SEOキーワード: 「${pasteKeyword}」を自然に含めること。` : "";
+
+  let prompt = `あなたはプロの美容ライター兼SEOコンサルタントです。
+以下に「元記事」のタイトルとHTML本文を貼り付けます。この元記事の内容・構成をベースに、
+SEO最適化された高品質なブログ記事として**全面リライト**してください。
+
+## 元記事タイトル
+${pasteTitle}
+
+## 元記事HTML本文
+${pasteHtml}
+
+## リライトルール（必ず守ること）
+- 元記事の情報・主張をベースにするが、**文章は完全にオリジナルで書き直す**（コピー率0%が目標）
+- 元記事にない独自の切り口・補足情報・具体例を追加して付加価値を出す
+- SEOを意識した見出し構成（h2/h3）に再構築する
+- ${ageLabel}女性をメインターゲットに、親しみやすく信頼感のある文体で書く
+- ${monthLabel}・${seasonLabel}の最新情報として書く（年数は${year}年を使うこと）
+${keywordNote}
+
+## 記事のクオリティ基準
+- 文字数: 4,000〜8,000文字（元記事より充実させる）
+- 導入文で読者の悩みに共感し、記事を読むメリットを明示
+- 各セクションに具体的な情報（数値・成分名・価格帯など）を含める
+- 「まとめ」セクションで要点を箇条書きで整理
+- FAQ（よくある質問）を3問含める
+
+## 重要：黄色マーカー装飾（必ず実行すること）
+htmlContent内で読者にとって特に重要な箇所に、以下のHTMLタグで黄色マーカーを引いてください：
+<span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要なテキスト</span>
+- 1記事あたり3〜5箇所に使用
+- 結論・注意点・ポイントなど重要なフレーズに使う
+
+${COMPLIANCE_BLOCK}
+
+## JSON出力（これだけ出力。他のテキスト不要）
+` + "```json\n" + `{
+  "title": "SEO最適化タイトル（32文字以内）",
+  "metaDescription": "120文字以内のメタディスクリプション",
+  "htmlContent": "リライトしたHTML記事本文（黄色マーカー含む）",
+  "slug": "english-seo-slug",
+  "focusKeyword": "メインSEOキーワード",
+  "keyword": "${pasteKeyword || "美容"}",
+  "themeLabel": "テキスト貼り付け",
+  "tags": ["タグ1", "タグ2", "タグ3"],
+  "faq": [{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"},{"question":"Q3","answer":"A3"}]
+}
+` + "```";
+
+  if (balloonOpts) {
+    prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+
+  const rawJson = await callClaude(apiKey, prompt);
+  const parsed = extractJSON(rawJson);
+  const article = buildGeneratedArticle(parsed, pasteKeyword || "paste-article", "テキスト貼り付け");
+
+  if (balloonOpts?.authorIconUrl) {
+    article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+  return article;
+}
