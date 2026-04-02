@@ -75,7 +75,7 @@ interface HistoryItem {
   title: string;
   keyword: string;
   themeLabel: string;
-  mode: "auto" | "theme" | "product" | "category";
+  mode: "auto" | "theme" | "product" | "category" | "paste";
   htmlContent: string;
   metaDescription: string;
   wpPostId?: number;
@@ -174,7 +174,7 @@ export default function Dashboard() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   // Generate state
-  const [genMode, setGenMode] = useState<"theme" | "product" | "category" | "personal-review">("category");
+  const [genMode, setGenMode] = useState<"theme" | "product" | "category" | "personal-review" | "paste">("category");
   // 本人使用投稿用state
   const [reviewProductName, setReviewProductName] = useState("");
   const [reviewRating, setReviewRating] = useState(4);
@@ -209,6 +209,10 @@ export default function Dashboard() {
   // カテゴリーテーマ提案（三者会議）
   const [categoryThemeSuggestions, setCategoryThemeSuggestions] = useState<any[]>([]);
   const [categoryThemesLoading, setCategoryThemesLoading] = useState(false);
+  // テキスト貼り付けモード
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [pasteHtml, setPasteHtml] = useState("");
+  const [pasteKeyword, setPasteKeyword] = useState("");
   // 商品モード: 商品名とアフィリエイトHTMLをセットで管理
   interface ProductEntry { name: string; affiliateHtml?: string; imageUrl?: string; price?: number; profitScore?: number; }
   const [products, setProducts] = useState<ProductEntry[]>([{ name: "" }]);
@@ -414,6 +418,44 @@ export default function Dashboard() {
     setGenResult(null);
     try {
       const body: any = { postToWP, postToX, targetAge, generateImages, hasExperience, experienceNote: hasExperience ? experienceNote : "", pricePreset: rakutenPricePreset, enableBalloon, authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined, authorName: enableBalloon ? (authorName || "みお") : undefined };
+      if (genMode === "paste") {
+        // テキスト貼り付けモード（APIコール不要）
+        if (!pasteTitle.trim() || !pasteHtml.trim()) {
+          setGenResult({ ok: false, error: "タイトルと本文を入力してください" });
+          setGenerating(false);
+          return;
+        }
+        const slug = pasteKeyword.trim()
+          ? pasteKeyword.trim().replace(/[^a-zA-Z0-9぀-鿿]/g, "-").replace(/-+/g, "-").slice(0, 60)
+          : "article-" + Date.now();
+        const article = {
+          title: pasteTitle.trim(),
+          seoTitle: pasteTitle.trim(),
+          metaDescription: "",
+          htmlContent: pasteHtml.trim(),
+          slug,
+          focusKeyword: pasteKeyword.trim(),
+          keyword: pasteKeyword.trim(),
+          themeLabel: "テキスト貼り付け",
+          tags: [] as string[],
+        };
+        const pasteItem: HistoryItem = {
+          id: Date.now(),
+          title: article.title,
+          keyword: article.keyword,
+          themeLabel: article.themeLabel,
+          mode: "paste",
+          htmlContent: article.htmlContent,
+          metaDescription: article.metaDescription,
+          createdAt: new Date().toLocaleString("ja-JP"),
+        };
+        setHistory((prev) => [pasteItem, ...prev]);
+        setGenResult({ success: true, articleData: article, pendingPublish: true });
+        setPreviewItem(pasteItem);
+        setGenerating(false);
+        runFactCheck(article);
+        return;
+      }
       if (genMode === "category") {
         // カテゴリー記事モード（別APIを使用）
         const pwd = getPwd();
@@ -1041,6 +1083,7 @@ export default function Dashboard() {
                   { id: "personal-review" as const, label: "本人使用投稿", desc: "写真付き実体験レビュー" },
                   { id: "product" as const, label: "商品指定", desc: "紹介したい商品を直接入力" },
                   { id: "theme" as const, label: "テーマ指定", desc: "サブテーマ＆キーワードから生成" },
+                    { id: "paste" as const, label: "テキスト貼り付け", desc: "他社AIの文章をそのまま記事化" },
                 ] as const).map((m) => (
                   <button
                     key={m.id}
@@ -1548,6 +1591,41 @@ export default function Dashboard() {
                       </select>
                     </div>
                   </>
+                ) : genMode === "paste" ? (
+                  <>
+                    {/* テキスト貼り付けモード */}
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>記事タイトル <span style={{ color: C.red }}>*</span></label>
+                      <input
+                        value={pasteTitle}
+                        onChange={(e) => setPasteTitle(e.target.value)}
+                        placeholder="記事のタイトルを入力"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.borderLight}`, background: "#14141F", color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>キーワード（任意）</label>
+                      <input
+                        value={pasteKeyword}
+                        onChange={(e) => setPasteKeyword(e.target.value)}
+                        placeholder="SEOキーワード（slug生成にも使用）"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.borderLight}`, background: "#14141F", color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>本文（HTML） <span style={{ color: C.red }}>*</span></label>
+                      <textarea
+                        value={pasteHtml}
+                        onChange={(e) => setPasteHtml(e.target.value)}
+                        placeholder="他社AIで生成したHTML本文をここに貼り付けてください"
+                        rows={12}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.borderLight}`, background: "#14141F", color: C.text, fontSize: 12, outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "monospace", lineHeight: 1.6 }}
+                      />
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                        {pasteHtml.length > 0 ? `${pasteHtml.length.toLocaleString()}文字` : "HTML形式・プレーンテキストどちらも対応"}
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <>
                     {/* 比較モードトグル */}
@@ -1774,7 +1852,7 @@ export default function Dashboard() {
                 {/* Generate button */}
                 <button
                   onClick={handleGenerate}
-                  disabled={generating || (genMode === "product" && products.every((p) => !p.name.trim()))}
+                  disabled={generating || (genMode === "product" && products.every((p) => !p.name.trim())) || (genMode === "paste" && (!pasteTitle.trim() || !pasteHtml.trim()))}
                   style={{
                     width: "100%",
                     background: generating ? "#1A1A28" : `linear-gradient(135deg,${C.accent},${C.green})`,
