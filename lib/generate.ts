@@ -867,6 +867,11 @@ function extractJSON(text: string): ParsedArticle {
     }
   }
 
+  // Step 1.5: JSON文字列内の不要な<link>/<style>タグを除去（トークン節約＋パース成功率向上）
+  // JSON内ではダブルクォートが \" にエスケープされるため、.で全文字マッチ
+  jsonStr = jsonStr.replace(/<link\s[\s\S]*?>/gi, "");
+  jsonStr = jsonStr.replace(/<style\b[\s\S]*?<\/style>/gi, "");
+
   // Step 2: パース試行
   let parsed: any;
   try {
@@ -888,6 +893,14 @@ function extractJSON(text: string): ParsedArticle {
   }
   if (!parsed.htmlContent) {
     throw new Error("Claude APIのレスポンスに htmlContent が含まれていません。レスポンス先頭: " + text.slice(0, 200));
+  }
+
+  // Step 5: 不要なHTML要素を除去（Claudeが指示に反して挿入する場合の対策）
+  if (typeof parsed.htmlContent === "string") {
+    // <link>タグ（外部CSS/Google Fonts等）を除去
+    parsed.htmlContent = parsed.htmlContent.replace(/<link\b[^>]*>/gi, "");
+    // <style>ブロックを除去
+    parsed.htmlContent = parsed.htmlContent.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
   }
 
   return parsed as ParsedArticle;
