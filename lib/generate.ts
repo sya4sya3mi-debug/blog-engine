@@ -1709,6 +1709,12 @@ ${keywordNote}
 - 「まとめ」セクションで要点を箇条書きで整理
 - FAQ（よくある質問）を3問含める
 
+## HTML出力ルール（厳守）
+- 外部CSSリンク（Google Fonts等の<link>タグ）は絶対に含めない
+- インラインスタイルのみ使用可（WordPressで正しく表示するため）
+- <style>タグは使わない
+- 画像タグ（<img>）は含めない（アイキャッチは別途生成される）
+
 ## 重要：黄色マーカー装飾（必ず実行すること）
 htmlContent内で読者にとって特に重要な箇所に、以下のHTMLタグで黄色マーカーを引いてください：
 <span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要なテキスト</span>
@@ -1735,7 +1741,7 @@ ${COMPLIANCE_BLOCK}
     prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
 
-  const rawJson = await callClaude(apiKey, prompt);
+  const rawJson = await callClaude(apiKey, prompt, 16000);
   const parsed = extractJSON(rawJson);
   const article = buildGeneratedArticle(parsed, pasteKeyword || "paste-article", "テキスト貼り付け");
 
