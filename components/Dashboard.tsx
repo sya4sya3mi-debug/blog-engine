@@ -425,6 +425,7 @@ export default function Dashboard() {
           setGenerating(false);
           return;
         }
+        console.log("[Paste] API呼び出し開始:", { pasteTitle: pasteTitle.trim().slice(0, 50), pasteHtmlLen: pasteHtml.trim().length, pasteKeyword: pasteKeyword.trim() });
         const pwd = getPwd();
         const pasteController = new AbortController();
         const pasteTimeoutId = setTimeout(() => pasteController.abort(), 180000);
@@ -443,7 +444,9 @@ export default function Dashboard() {
           signal: pasteController.signal,
         });
         clearTimeout(pasteTimeoutId);
+        console.log("[Paste] API応答受信:", pasteRes.status);
         const pasteRaw = await pasteRes.text();
+        console.log("[Paste] レスポンス長:", pasteRaw.length, "先頭:", pasteRaw.slice(0, 100));
         const pasteJsonMatch = pasteRaw.trim().match(/\{[\s\S]*\}$/);
         if (!pasteJsonMatch) throw new Error("テキスト貼り付け記事の生成に失敗しました");
         const pasteData = JSON.parse(pasteJsonMatch[0]);
