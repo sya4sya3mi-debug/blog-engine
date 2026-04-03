@@ -7,7 +7,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { generateEyecatchImage, generateProductEyecatchImage } from "@/lib/image-generator";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const config = getConfig();

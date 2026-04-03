@@ -518,6 +518,7 @@ export default function Dashboard() {
           body: JSON.stringify({
             mode: "personal-review",
             targetAge,
+            enableBalloon,
             reviewData: {
               productName: reviewProductName,
               rating: reviewRating,
@@ -533,8 +534,8 @@ export default function Dashboard() {
               comparisonNote: reviewComparisonNote,
             },
             photoUrls,
-            authorIconUrl: authorIconUrl || undefined,
-            authorName: authorName || "みお",
+            authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined,
+            authorName: enableBalloon ? (authorName || "みお") : undefined,
           }),
           signal: prController.signal,
         });
