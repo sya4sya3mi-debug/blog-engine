@@ -1135,17 +1135,9 @@ export default function Dashboard() {
                           try {
                             const h: HeadersInit = { "Content-Type": "application/json" };
                             const res = await fetch("/api/category-theme-suggest", { method: "POST", headers: h });
-                            let trimmed = "";
-                            const reader = res.body?.getReader();
-                            const dec = new TextDecoder();
-                            if (reader) {
-                              while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                trimmed += dec.decode(value);
-                              }
-                            }
-                            const jsonMatch = trimmed.trim().match(/{[sS]*"(success|error|themes)"[sS]*}/);
+                            const rawText = await res.text();
+                            const trimmed = rawText.trim();
+                            const jsonMatch = trimmed.match(/\{[\s\S]*\}$/);
                             if (jsonMatch) {
                               const data = JSON.parse(jsonMatch[0]);
                               if (data.themes) setCategoryThemeSuggestions(data.themes);
