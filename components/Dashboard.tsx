@@ -1135,7 +1135,7 @@ export default function Dashboard() {
                           setCategoryThemesLoading(true);
                           setCategoryThemeError("");
                           try {
-                            const h: HeadersInit = { "Content-Type": "application/json" };
+                            const h = { "Content-Type": "application/json", Authorization: `Bearer ${getPwd()}` };
                             const res = await fetch("/api/category-theme-suggest", { method: "POST", headers: h });
                             const rawText = await res.text();
                             console.log("[category-theme-suggest] raw:", rawText.slice(0, 300));
