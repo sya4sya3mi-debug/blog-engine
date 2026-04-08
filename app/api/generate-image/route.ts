@@ -11,15 +11,15 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const config = getConfig();
-
-  if (!config.openaiApiKey) {
-    return NextResponse.json({ error: "OPENAI_API_KEY未設定" }, { status: 400 });
-  }
-
-  const { title, keyword, themeLabel, productNames } = await req.json();
-
   try {
+    const config = getConfig();
+
+    if (!config.openaiApiKey) {
+      return NextResponse.json({ error: "OPENAI_API_KEY未設定" }, { status: 400 });
+    }
+
+    const { title, keyword, themeLabel, productNames } = await req.json();
+
     const eyecatch = productNames && productNames.length > 0
       ? await generateProductEyecatchImage(config.openaiApiKey, productNames, title)
       : await generateEyecatchImage(config.openaiApiKey, title, keyword || "", themeLabel || "");
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       altText: eyecatch.altText,
     });
   } catch (e: any) {
+    console.error("[generate-image] error:", e.message);
     return NextResponse.json({ error: `画像生成エラー: ${e.message}` }, { status: 500 });
   }
 }
