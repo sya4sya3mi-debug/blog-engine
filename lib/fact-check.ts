@@ -138,7 +138,7 @@ ${article.htmlContent || ""}`;
   try {
     // ストリーミングで受信（Vercel Hobby の関数タイムアウト対策）
     const stream = client.messages.stream({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 8096,
       system: REVIEW_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],

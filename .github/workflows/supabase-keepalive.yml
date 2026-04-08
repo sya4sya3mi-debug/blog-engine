@@ -1,0 +1,46 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    - cron: "17 3 * * 1,3,5"
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Validate secrets
+        run: |
+          if [ -z "$SUPABASE_PROJECT_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Missing SUPABASE_PROJECT_URL or SUPABASE_ANON_KEY"
+            exit 1
+          fi
+
+      - name: Ping Supabase Auth health
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_PROJECT_URL/auth/v1/health" >/dev/null
+
+      - name: Ping Supabase REST endpoint
+        run: |
+          set -euo pipefail
+          status_code="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_PROJECT_URL/rest/v1/")"
+          echo "REST status: $status_code"
+          if [ "$status_code" = "000" ] || [ "${status_code#5}" != "$status_code" ]; then
+            exit 1
+          fi
+

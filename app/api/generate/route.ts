@@ -9,6 +9,7 @@ import { generateArticle, generateProductArticleWithReviews, TargetAge } from "@
 import { AffiliateLink, replaceAffiliatePlaceholders } from "@/lib/affiliate";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
 import { factCheckArticle } from "@/lib/fact-check";
+import { WordPressClient } from "@/lib/wordpress";
 
 // Edge Runtimeを使用（Hobby: 25秒 → ストリーミングで延長可能）
 export const runtime = "edge";
@@ -35,7 +36,22 @@ export async function POST(req: NextRequest) {
   };
 
   const age: TargetAge = targetAge || "30s";
-  const balloonOpts = body.enableBalloon ? { authorIconUrl: body.authorIconUrl as string | undefined, authorName: body.authorName as string | undefined } : undefined;
+  let balloonOpts = body.enableBalloon
+    ? { authorIconUrl: body.authorIconUrl as string | undefined, authorName: body.authorName as string | undefined }
+    : undefined;
+
+  if (balloonOpts && (!balloonOpts.authorIconUrl || !balloonOpts.authorName)) {
+    try {
+      const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
+      const profile = await wp.getAuthorProfile();
+      balloonOpts = {
+        authorIconUrl: balloonOpts.authorIconUrl || profile.avatarUrl || undefined,
+        authorName: balloonOpts.authorName || profile.name || undefined,
+      };
+    } catch {
+      // ignore and keep defaults
+    }
+  }
 
   const genre = ALL_GENRES.find((g) => g.id === config.activeGenre);
   if (!genre) {

@@ -6,6 +6,7 @@
 import { NextRequest } from "next/server";
 import { getConfig } from "@/lib/config";
 import { WordPressClient } from "@/lib/wordpress";
+import { ALLOWED_TAGS } from "@/lib/tag-allowlist";
 import { injectEyecatchIntoArticle, GeneratedArticle } from "@/lib/generate";
 import { generateEyecatchImage, generateProductEyecatchImage } from "@/lib/image-generator";
 import { replaceInternalLinkPlaceholders } from "@/lib/internal-links";
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. WordPress投稿
-        const tagIds = article.tags.length > 0 ? await wp.findOrCreateTags(article.tags) : [];
+        const tagIds = article.tags.length > 0 ? await wp.findExistingTags(article.tags, ALLOWED_TAGS) : [];
         const wpStatus = (publishStatus || config.wpDefaultStatus || "draft") as "draft" | "publish" | "future";
         // 予約投稿の日時フォーマット修正（datetime-localは秒がないのでWordPress用に追加）
         let wpDate: string | undefined;

@@ -271,7 +271,7 @@ export async function generateAiTweetText(
       : `記事タイトル: ${articleTitle}\n記事内容（抜粋）: ${plainText}\n\n上記の記事内容から、Xでブックマークされやすい投稿文を1つ作成してください。`;
 
     const aiRes = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-4-5",
       max_tokens: isLong ? 1200 : 500,
       messages: [{
         role: "user",
@@ -492,13 +492,20 @@ export async function postArticleToX(
 ): Promise<XPostResult> {
   const tweetText = customText || buildTweetText(articleTitle, articleUrl, metaDescription, tags);
 
-  // 本体ツイートはテキストのみ（画像なし・URLなし）
-  // 画像とURLはリプライに集約してOGPカードで表示
+  // 本体ツイートはテキスト中心。画像があれば添付し、URLはリプライでOGP表示させる
   const url = "https://api.x.com/2/tweets";
   try {
     const authHeader = await buildOAuthHeader("POST", url, creds);
     const body: any = { text: tweetText };
-    // 本体には画像を付けない（リプライのOGPカードに任せる）
+    if (imageUrl) {
+      const mediaId = await uploadImageToX(creds, imageUrl);
+      if (mediaId) {
+        body.media = { media_ids: [mediaId] };
+        console.log("[X Post] Media attached:", mediaId);
+      } else {
+        console.warn("[X Post] Media upload failed, posting without image");
+      }
+    }
 
     const res = await fetch(url, {
       method: "POST",

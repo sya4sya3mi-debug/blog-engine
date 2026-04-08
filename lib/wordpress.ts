@@ -117,6 +117,32 @@ export class WordPressClient {
     return ids;
   }
 
+  /** 既存タグのみを検索（新規作成しない） */
+  async findExistingTag(name: string): Promise<number | null> {
+    const tags = await this.request<{ id: number; name: string }[]>(
+      `/tags?search=${encodeURIComponent(name)}`
+    );
+    const exact = tags.find((t) => t.name === name);
+    return exact ? exact.id : null;
+  }
+
+  /** 複数タグを既存のみで検索（新規作成しない・許可リストでフィルタ） */
+  async findExistingTags(names: string[], allowlist?: string[]): Promise<number[]> {
+    const filtered = allowlist
+      ? names.filter((n) => allowlist.includes(n))
+      : names;
+    const ids: number[] = [];
+    for (const name of filtered) {
+      try {
+        const id = await this.findExistingTag(name);
+        if (id !== null) ids.push(id);
+      } catch {
+        // 検索失敗は無視して続行
+      }
+    }
+    return ids;
+  }
+
   /** 接続テスト */
   async testConnection(): Promise<{ ok: boolean; name?: string; error?: string }> {
     try {
@@ -135,12 +161,12 @@ export class WordPressClient {
 
   /** ユーザーのGravatar URLと名前を取得 */
   async getAuthorProfile(): Promise<{ name: string; avatarUrl: string }> {
-    const res = await fetch(`${this.baseUrl}/wp-json/wp/v2/users/me`, {
+    const res = await fetch(`${this.baseUrl}/wp-json/wp/v2/users/me?context=edit`, {
       headers: { Authorization: this.authHeader },
     });
     if (!res.ok) throw new Error(`プロフィール取得失敗 (${res.status})`);
     const user = (await res.json()) as { name: string; avatar_urls?: Record<string, string> };
-    const avatarUrl = user.avatar_urls?.["96"] || user.avatar_urls?.["48"] || "";
+    const avatarUrl = (user.avatar_urls?.["96"] || user.avatar_urls?.["48"] || "").replace(/^http:\/\//i, "https://");
     return { name: user.name, avatarUrl };
   }
 

@@ -8,14 +8,28 @@ export const runtime = "edge";
 
 import { getConfig } from "@/lib/config";
 import { generatePasteArticle } from "@/lib/generate";
+import { WordPressClient } from "@/lib/wordpress";
 
 export async function POST(req: Request) {
   const config = getConfig();
   const body = await req.json();
   const { pasteTitle, pasteHtml, pasteKeyword, targetAge } = body;
-  const balloonOpts = body.enableBalloon
+  let balloonOpts = body.enableBalloon
     ? { authorIconUrl: body.authorIconUrl as string | undefined, authorName: body.authorName as string | undefined }
     : undefined;
+
+  if (balloonOpts && (!balloonOpts.authorIconUrl || !balloonOpts.authorName)) {
+    try {
+      const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
+      const profile = await wp.getAuthorProfile();
+      balloonOpts = {
+        authorIconUrl: balloonOpts.authorIconUrl || profile.avatarUrl || undefined,
+        authorName: balloonOpts.authorName || profile.name || undefined,
+      };
+    } catch {
+      // ignore and keep defaults
+    }
+  }
 
   if (!pasteTitle?.trim() || !pasteHtml?.trim()) {
     return Response.json({ error: "タイトルと本文を入力してください" }, { status: 400 });

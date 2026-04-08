@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getConfig, ALL_GENRES, getTodaysTheme, getTodaysTargetAge, SubTheme } from "@/lib/config";
-import { generateArticle, injectEyecatchIntoArticle } from "@/lib/generate";
+import { generateArticle, injectEyecatchIntoArticle, titleSimilarity } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
+import { ALLOWED_TAGS } from "@/lib/tag-allowlist";
 import { replaceAffiliatePlaceholders, getCronAffiliateLinks } from "@/lib/affiliate";
 import { factCheckArticle } from "@/lib/fact-check";
 import { replaceInternalLinkPlaceholders } from "@/lib/internal-links";
@@ -90,7 +91,14 @@ export async function GET(req: NextRequest) {
         const kwWords = keyword.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
         // キーワードの主要語が2つ以上タイトルに含まれていれば重複とみなす
         const matchCount = kwWords.filter((w) => postTitle.includes(w) || postSlug.includes(w)).length;
-        return matchCount >= 2;
+        if (matchCount >= 2) return true;
+        // bigram類似度によるカニバリ検知（閾値0.4）
+        const similarity = titleSimilarity(keyword, post.title || "");
+        if (similarity >= 0.4) {
+          console.log(`[Cron] Cannibalization detected: "${keyword}" ≈ "${post.title}" (similarity: ${similarity.toFixed(2)})`);
+          return true;
+        }
+        return false;
       });
 
       if (!isDuplicate) break; // 重複なし → このテーマで記事生成
@@ -194,8 +202,8 @@ export async function GET(req: NextRequest) {
 
     const categoryId = await wp.findOrCreateCategory(theme.label, theme.id);
 
-    // タグを自動作成
-    const tagIds = article.tags.length > 0 ? await wp.findOrCreateTags(article.tags) : [];
+    // タグを許可リストからのみ検索（新規作成しない）
+    const tagIds = article.tags.length > 0 ? await wp.findExistingTags(article.tags, ALLOWED_TAGS) : [];
 
     // 3. アイキャッチ画像生成 & WordPressアップロード
     let featuredMediaId: number | undefined;

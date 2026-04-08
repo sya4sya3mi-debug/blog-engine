@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
         // Google Suggestでトレンドワードを取得
         const trendSeeds = [
-          "スキンケア 2026", "美容液 おすすめ", "毛穴 ケア",
+          `スキンケア ${new Date().getFullYear()}`, "美容液 おすすめ", "毛穴 ケア",
           "医療脱毛", "美容クリニック", "エイジングケア",
           "ヘアケア おすすめ", "シミ 美白",
         ];
@@ -178,7 +178,7 @@ targetAge: "20s", "30s", "40s"`;
 
         let text = "";
         const aiStream = client.messages.stream({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 3000,
           messages: [{ role: "user", content: prompt }],
         });

@@ -18,7 +18,22 @@ export async function POST(req: Request) {
   const safeSubThemeIds = Array.isArray(subThemeIds)
     ? subThemeIds.filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
     : [];
-  const balloonOpts = body.enableBalloon ? { authorIconUrl: body.authorIconUrl as string | undefined, authorName: body.authorName as string | undefined } : undefined;
+  let balloonOpts = body.enableBalloon
+    ? { authorIconUrl: body.authorIconUrl as string | undefined, authorName: body.authorName as string | undefined }
+    : undefined;
+
+  if (balloonOpts && (!balloonOpts.authorIconUrl || !balloonOpts.authorName)) {
+    try {
+      const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
+      const profile = await wp.getAuthorProfile();
+      balloonOpts = {
+        authorIconUrl: balloonOpts.authorIconUrl || profile.avatarUrl || undefined,
+        authorName: balloonOpts.authorName || profile.name || undefined,
+      };
+    } catch {
+      // ignore and keep defaults
+    }
+  }
 
   if (!categoryId) {
     return Response.json({ error: "カテゴリーを選択してください" }, { status: 400 });

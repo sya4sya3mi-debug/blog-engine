@@ -17,7 +17,20 @@ export async function POST(req: NextRequest) {
     }
 
     const wp = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
-    const name = authorName || "みお";
+
+    let resolvedAuthorIconUrl: string | undefined = authorIconUrl || undefined;
+    let resolvedAuthorName: string | undefined = authorName || undefined;
+    if (!resolvedAuthorIconUrl || !resolvedAuthorName) {
+      try {
+        const profile = await wp.getAuthorProfile();
+        resolvedAuthorIconUrl = resolvedAuthorIconUrl || profile.avatarUrl || undefined;
+        resolvedAuthorName = resolvedAuthorName || profile.name || undefined;
+      } catch {
+        // ignore and keep defaults
+      }
+    }
+
+    const name = resolvedAuthorName || "みお";
     const endpoint = postType === "page" ? "pages" : "posts";
 
     // 記事のraw contentを取得
@@ -55,7 +68,7 @@ export async function POST(req: NextRequest) {
     const sectionList = sections.map((s, i) => `${i + 1}. ${s.heading}`).join("\n");
 
     const aiRes = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 2000,
       messages: [{
         role: "user",
@@ -83,8 +96,8 @@ JSON配列で出力してください（他のテキスト不要）：
     const comments: { index: number; comment: string }[] = JSON.parse(jsonMatch[0]);
 
     // アイコンHTML
-    const iconHtml = authorIconUrl
-      ? `<img src="${authorIconUrl}" alt="${name}" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:2px solid #FFE066;object-fit:cover;display:block" />`
+    const iconHtml = resolvedAuthorIconUrl
+      ? `<img src="${resolvedAuthorIconUrl}" alt="${name}" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:2px solid #FFE066;object-fit:cover;display:block" />`
       : `<div style="width:60px;height:60px;border-radius:50%;background:#FFE066;display:flex;align-items:center;justify-content:center;font-size:24px">👩</div>`;
 
     // 後ろから挿入（インデックスがずれないように）

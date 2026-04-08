@@ -182,7 +182,7 @@ isMulti=true は clinic-comparison か cosmetics のみ（subThemeIds 2〜3個�
 
                 let text = "";
         const aiStream = client.messages.stream({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 3000,
           messages: [{ role: "user", content: prompt }],
         });

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
+import { createHash } from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,9 +13,40 @@ export async function POST(req: NextRequest) {
     const { postId, postType, authorIconUrl, authorName } = await req.json();
     if (!postId) return NextResponse.json({ error: "postIdが必要です" }, { status: 400 });
 
-    const name = authorName || "みお";
     const endpoint = postType === "page" ? "pages" : "posts";
     const authHeader = "Basic " + Buffer.from(`${config.wpUsername}:${config.wpAppPassword}`).toString("base64");
+
+    let resolvedAuthorIconUrl: string | undefined = authorIconUrl || undefined;
+    let resolvedAuthorName: string | undefined = authorName || undefined;
+    if (!resolvedAuthorIconUrl || !resolvedAuthorName) {
+      try {
+        const baseUrl = config.wpSiteUrl.replace(/\/+$/, "");
+        const profileRes = await fetch(`${baseUrl}/wp-json/wp/v2/users/me?context=edit`, {
+          headers: { Authorization: authHeader },
+        });
+        if (profileRes.ok) {
+          const user = (await profileRes.json()) as {
+            name?: string;
+            email?: string;
+            avatar_urls?: Record<string, string>;
+          };
+
+          resolvedAuthorName = resolvedAuthorName || user.name || undefined;
+
+          const email = (user.email || "").trim().toLowerCase();
+          const computedGravatarUrl = email
+            ? `https://secure.gravatar.com/avatar/${createHash("md5").update(email).digest("hex")}?s=96&d=mp&r=pg`
+            : "";
+          const wpAvatarUrl = user.avatar_urls?.["96"] || user.avatar_urls?.["48"] || "";
+          resolvedAuthorIconUrl = resolvedAuthorIconUrl || computedGravatarUrl || wpAvatarUrl || undefined;
+          if (resolvedAuthorIconUrl) resolvedAuthorIconUrl = resolvedAuthorIconUrl.replace(/^http:\/\//i, "https://");
+        }
+      } catch {
+        // ignore and keep defaults
+      }
+    }
+
+    const name = resolvedAuthorName || "みお";
 
     // 1. raw content取得
     const res = await fetch(`${config.wpSiteUrl}/wp-json/wp/v2/${endpoint}/${postId}?context=edit`, {
@@ -71,7 +103,7 @@ export async function POST(req: NextRequest) {
     const sectionList = targetSections.map((s, i) => `${i + 1}. ${s.heading}`).join("\n");
 
     const aiRes = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 2000,
       messages: [{
         role: "user",
@@ -108,8 +140,8 @@ JSON配列で出力（他のテキスト不要）：
     const comments: { index: number; comment: string }[] = JSON.parse(jsonMatch[0]);
 
     // 5. アイコンHTML
-    const iconHtml = authorIconUrl
-      ? `<img src="${authorIconUrl}" alt="${name}" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:2px solid #FFE066;object-fit:cover;display:block" />`
+    const iconHtml = resolvedAuthorIconUrl
+      ? `<img src="${resolvedAuthorIconUrl}" alt="${name}" width="60" height="60" style="width:60px;height:60px;border-radius:50%;border:2px solid #FFE066;object-fit:cover;display:block" />`
       : `<div style="width:60px;height:60px;border-radius:50%;background:#FFE066;display:flex;align-items:center;justify-content:center;font-size:24px">👩</div>`;
 
     // 6. 後ろから挿入
