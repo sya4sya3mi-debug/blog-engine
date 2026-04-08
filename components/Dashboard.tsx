@@ -209,6 +209,7 @@ export default function Dashboard() {
   // カテゴリーテーマ提案（三者会議）
   const [categoryThemeSuggestions, setCategoryThemeSuggestions] = useState<any[]>([]);
   const [categoryThemesLoading, setCategoryThemesLoading] = useState(false);
+  const [categoryThemeError, setCategoryThemeError] = useState("");
   // テキスト貼り付けモード
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteHtml, setPasteHtml] = useState("");
@@ -1132,17 +1133,21 @@ export default function Dashboard() {
                       <button
                         onClick={async () => {
                           setCategoryThemesLoading(true);
+                          setCategoryThemeError("");
                           try {
                             const h: HeadersInit = { "Content-Type": "application/json" };
                             const res = await fetch("/api/category-theme-suggest", { method: "POST", headers: h });
                             const rawText = await res.text();
+                            console.log("[category-theme-suggest] raw:", rawText.slice(0, 300));
                             const trimmed = rawText.trim();
+                            if (!trimmed) { setCategoryThemeError("応答が空でした（タイムアウトの可能性）"); setCategoryThemesLoading(false); return; }
                             const jsonMatch = trimmed.match(/\{[\s\S]*\}$/);
-                            if (jsonMatch) {
-                              const data = JSON.parse(jsonMatch[0]);
-                              if (data.themes) setCategoryThemeSuggestions(data.themes);
-                            }
-                          } catch (e: any) { console.error(e); }
+                            if (!jsonMatch) { setCategoryThemeError("JSON抽出失敗: " + trimmed.slice(0, 100)); setCategoryThemesLoading(false); return; }
+                            const data = JSON.parse(jsonMatch[0]);
+                            if (data.error) { setCategoryThemeError("APIエラー: " + data.error); setCategoryThemesLoading(false); return; }
+                            if (data.themes) setCategoryThemeSuggestions(data.themes);
+                            else setCategoryThemeError("themesが返されませんでした");
+                          } catch (e: any) { console.error(e); setCategoryThemeError("例外: " + e.message); }
                           setCategoryThemesLoading(false);
                         }}
                         disabled={categoryThemesLoading}
@@ -1150,6 +1155,11 @@ export default function Dashboard() {
                       >
                         {categoryThemesLoading ? "🧠 3人のプロが会議中... (約30秒)" : "🧠 3人のプロにカテゴリーテーマを聞く"}
                       </button>
+                      {categoryThemeError && (
+                        <div style={{ padding: "10px 14px", borderRadius: 8, background: "#FF000022", border: "1px solid #FF000066", color: "#FF6666", fontSize: 12, marginBottom: 8 }}>
+                          ❌ {categoryThemeError}
+                        </div>
+                      )}
                       {categoryThemeSuggestions.length > 0 && (
                         <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
                           {categoryThemeSuggestions.map((t: any, i: number) => (
