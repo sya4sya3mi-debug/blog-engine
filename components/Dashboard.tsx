@@ -2892,6 +2892,181 @@ export default function Dashboard() {
 // ==========================================
 // Rewrite Tab Component
 // ==========================================
+// ==========================================
+// Rewrite Result: Before / After Comparison
+// ==========================================
+function RewriteResultPreview({ result, C, isMobile, updating, updateDone, applyToWordPress, onRetry, onSelectAnother }: {
+  result: any; C: Record<string, string>; isMobile: boolean; updating: boolean; updateDone: boolean;
+  applyToWordPress: () => void; onRetry: () => void; onSelectAnother: () => void;
+}) {
+  const [contentView, setContentView] = useState<"side" | "before" | "after">(isMobile ? "after" : "side");
+
+  const changed = (a: string, b: string) => (a || "").trim() !== (b || "").trim();
+  const titleChanged = changed(result.original.title, result.article.title);
+
+  // Diff badge
+  const DiffBadge = ({ isChanged }: { isChanged: boolean }) => (
+    <span style={{
+      display: "inline-block", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, marginLeft: 8,
+      background: isChanged ? "#fff3cd" : "#d4edda", color: isChanged ? "#856404" : "#155724",
+    }}>
+      {isChanged ? "変更あり" : "変更なし"}
+    </span>
+  );
+
+  // Section wrapper with label
+  const Section = ({ label, isChanged, children }: { label: string; isChanged: boolean; children: React.ReactNode }) => (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6, display: "flex", alignItems: "center" }}>
+        {label}<DiffBadge isChanged={isChanged} />
+      </div>
+      {children}
+    </div>
+  );
+
+  // Before/After row for simple text fields
+  const TextDiff = ({ before, after }: { before: string; after: string }) => {
+    const isChanged = changed(before, after);
+    if (!isChanged) {
+      return <div style={{ fontSize: 13, padding: "8px 12px", background: C.bg, borderRadius: 6, border: `1px solid ${C.border}` }}>{after}</div>;
+    }
+    return (
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#e74c3c", marginBottom: 4 }}>修正前</div>
+          <div style={{ fontSize: 13, padding: "8px 12px", background: "#fdf0f0", borderRadius: 6, border: "1px solid #f5c6cb", color: "#721c24", lineHeight: 1.6 }}>{before}</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#27ae60", marginBottom: 4 }}>修正後</div>
+          <div style={{ fontSize: 13, padding: "8px 12px", background: "#f0fdf4", borderRadius: 6, border: "1px solid #c3e6cb", color: "#155724", lineHeight: 1.6 }}>{after}</div>
+        </div>
+      </div>
+    );
+  };
+
+  // Tab button for content view toggle
+  const ViewTab = ({ id, label }: { id: "side" | "before" | "after"; label: string }) => (
+    <button
+      onClick={() => setContentView(id)}
+      style={{
+        padding: "6px 14px", borderRadius: 6, border: `1px solid ${contentView === id ? C.accent : C.border}`,
+        background: contentView === id ? C.accent : "transparent", color: contentView === id ? "#fff" : C.text,
+        fontSize: 12, fontWeight: 600, cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  const htmlPanelStyle = (type: "before" | "after"): React.CSSProperties => ({
+    flex: 1, fontSize: 13, maxHeight: 500, overflowY: "auto" as const, padding: 16, borderRadius: 8, lineHeight: 1.8,
+    background: type === "before" ? "#fdf8f8" : "#f8fdf8",
+    border: `1px solid ${type === "before" ? "#f0d0d0" : "#c3e6cb"}`,
+  });
+
+  return (
+    <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+      <h4 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>リライト結果 — 修正前 vs 修正後</h4>
+
+      {/* Title */}
+      <Section label="タイトル" isChanged={titleChanged}>
+        <TextDiff before={result.original.title} after={result.article.title} />
+      </Section>
+
+      {/* Meta Description */}
+      <Section label="メタディスクリプション" isChanged={!!result.article.metaDescription}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#e74c3c", marginBottom: 4 }}>修正前</div>
+            <div style={{ fontSize: 12, padding: "8px 12px", background: "#fdf0f0", borderRadius: 6, border: "1px solid #f5c6cb", color: "#721c24", lineHeight: 1.6 }}>
+              {result.original.meta?.metaDescription || result.original.meta?._seo_description || "(なし)"}
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#27ae60", marginBottom: 4 }}>修正後</div>
+            <div style={{ fontSize: 12, padding: "8px 12px", background: "#f0fdf4", borderRadius: 6, border: "1px solid #c3e6cb", color: "#155724", lineHeight: 1.6 }}>
+              {result.article.metaDescription || "(なし)"}
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Focus Keyword + Tags */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>フォーカスKW</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.accent }}>{result.article.focusKeyword}</div>
+        </div>
+        {result.article.tags?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>タグ</div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {result.article.tags.map((t: string, i: number) => (
+                <span key={i} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.bg, border: `1px solid ${C.border}` }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* HTML Content — View Toggle */}
+      <Section label="本文" isChanged={changed(result.original.content, result.article.htmlContent)}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {!isMobile && <ViewTab id="side" label="並べて比較" />}
+          <ViewTab id="before" label="修正前" />
+          <ViewTab id="after" label="修正後" />
+        </div>
+
+        {contentView === "side" ? (
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1, position: "relative" }}>
+              <div style={{ position: "sticky", top: 0, background: "#e74c3c", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "6px 6px 0 0", textAlign: "center" }}>修正前</div>
+              <div style={htmlPanelStyle("before")} dangerouslySetInnerHTML={{ __html: result.original.content }} />
+            </div>
+            <div style={{ flex: 1, position: "relative" }}>
+              <div style={{ position: "sticky", top: 0, background: "#27ae60", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "6px 6px 0 0", textAlign: "center" }}>修正後</div>
+              <div style={htmlPanelStyle("after")} dangerouslySetInnerHTML={{ __html: result.article.htmlContent }} />
+            </div>
+          </div>
+        ) : contentView === "before" ? (
+          <div>
+            <div style={{ background: "#e74c3c", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "6px 6px 0 0", textAlign: "center" }}>修正前</div>
+            <div style={{ ...htmlPanelStyle("before"), maxHeight: 600 }} dangerouslySetInnerHTML={{ __html: result.original.content }} />
+          </div>
+        ) : (
+          <div>
+            <div style={{ background: "#27ae60", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "6px 6px 0 0", textAlign: "center" }}>修正後</div>
+            <div style={{ ...htmlPanelStyle("after"), maxHeight: 600 }} dangerouslySetInnerHTML={{ __html: result.article.htmlContent }} />
+          </div>
+        )}
+      </Section>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
+        {!updateDone ? (
+          <button
+            onClick={applyToWordPress}
+            disabled={updating}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "#27ae60", color: "#fff", fontWeight: 700, fontSize: 14, opacity: updating ? 0.5 : 1 }}
+          >
+            {updating ? "WordPress 更新中..." : "WordPress に反映する"}
+          </button>
+        ) : (
+          <div style={{ padding: "10px 20px", borderRadius: 8, background: "#d4edda", color: "#155724", fontWeight: 700, fontSize: 14 }}>
+            WordPress に反映しました
+          </div>
+        )}
+        <button onClick={onRetry} style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 13 }}>
+          やり直す
+        </button>
+        <button onClick={onSelectAnother} style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 13 }}>
+          別の記事を選択
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<string, string>; authToken: string }) {
   const [posts, setPosts] = useState<{ id: number; title: string; slug: string; link: string }[]>([]);
   const [filteredPosts, setFilteredPosts] = useState<typeof posts>([]);
@@ -3141,75 +3316,8 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
         </div>
       )}
 
-      {/* Result preview */}
-      {result && (
-        <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
-          <h4 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>リライト結果プレビュー</h4>
-
-          {/* Title comparison */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>タイトル</div>
-            {result.original.title !== result.article.title ? (
-              <div>
-                <div style={{ fontSize: 13, color: "#e74c3c", textDecoration: "line-through", marginBottom: 2 }}>{result.original.title}</div>
-                <div style={{ fontSize: 13, color: "#27ae60", fontWeight: 600 }}>{result.article.title}</div>
-              </div>
-            ) : (
-              <div style={{ fontSize: 13 }}>{result.article.title}（変更なし）</div>
-            )}
-          </div>
-
-          {/* Meta description */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>メタディスクリプション</div>
-            <div style={{ fontSize: 12, color: C.text, background: C.bg, padding: 10, borderRadius: 6 }}>{result.article.metaDescription}</div>
-          </div>
-
-          {/* Focus keyword */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>フォーカスキーワード</div>
-            <div style={{ fontSize: 13 }}>{result.article.focusKeyword}</div>
-          </div>
-
-          {/* HTML preview */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>本文プレビュー</div>
-            <div
-              style={{ fontSize: 13, maxHeight: 400, overflowY: "auto", background: C.bg, padding: 16, borderRadius: 8, border: `1px solid ${C.border}`, lineHeight: 1.8 }}
-              dangerouslySetInnerHTML={{ __html: result.article.htmlContent }}
-            />
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {!updateDone ? (
-              <button
-                onClick={applyToWordPress}
-                disabled={updating}
-                style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "#27ae60", color: "#fff", fontWeight: 700, fontSize: 14, opacity: updating ? 0.5 : 1 }}
-              >
-                {updating ? "WordPress 更新中..." : "✅ WordPress に反映する"}
-              </button>
-            ) : (
-              <div style={{ padding: "10px 20px", borderRadius: 8, background: "#d4edda", color: "#155724", fontWeight: 700, fontSize: 14 }}>
-                ✅ WordPress に反映しました
-              </div>
-            )}
-            <button
-              onClick={() => { setResult(null); setError(""); setUpdateDone(false); }}
-              style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 13 }}
-            >
-              やり直す
-            </button>
-            <button
-              onClick={() => { setSelectedPost(null); setResult(null); setError(""); setUpdateDone(false); }}
-              style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 13 }}
-            >
-              別の記事を選択
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Result preview — Before / After comparison */}
+      {result && <RewriteResultPreview result={result} C={C} isMobile={isMobile} updating={updating} updateDone={updateDone} applyToWordPress={applyToWordPress} onRetry={() => { setResult(null); setError(""); setUpdateDone(false); }} onSelectAnother={() => { setSelectedPost(null); setResult(null); setError(""); setUpdateDone(false); }} />}
     </div>
   );
 }

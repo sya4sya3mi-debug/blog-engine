@@ -173,6 +173,7 @@ export async function POST(req: NextRequest) {
           original: {
             title: existing.title,
             content: existing.content,
+            meta: existing.meta || {},
           },
         })));
         controller.close();
