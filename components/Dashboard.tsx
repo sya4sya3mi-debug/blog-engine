@@ -2899,9 +2899,54 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
   result: any; C: Record<string, string>; isMobile: boolean; updating: boolean; updateDone: boolean;
   applyToWordPress: () => void; onRetry: () => void; onSelectAnother: () => void;
 }) {
-  const [contentView, setContentView] = useState<"side" | "before" | "after">(isMobile ? "after" : "side");
+  const [contentView, setContentView] = useState<"side" | "before" | "after" | "diff">(isMobile ? "diff" : "side");
 
   const changed = (a: string, b: string) => (a || "").trim() !== (b || "").trim();
+
+  /**
+   * 修正後HTMLの変更箇所をハイライト表示するための差分生成
+   * 修正前HTMLに存在しない要素・テキストを黄色背景で強調
+   */
+  const buildDiffHtml = (beforeHtml: string, afterHtml: string): string => {
+    // HTMLをブロック単位で分割（<p>, <div>, <h2>, <h3>, <li>, <a> etc.）
+    const extractBlocks = (html: string): string[] => {
+      // ブロック要素で分割しつつ、各ブロックのouterHTMLを保持
+      const blocks: string[] = [];
+      const blockRegex = /(<(?:p|div|h[1-6]|li|ul|ol|blockquote|table|tr|section|article|aside|figure|figcaption|details|summary)[^>]*>[\s\S]*?<\/(?:p|div|h[1-6]|li|ul|ol|blockquote|table|tr|section|article|aside|figure|figcaption|details|summary)>)/gi;
+      let match;
+      while ((match = blockRegex.exec(html)) !== null) {
+        blocks.push(match[1]);
+      }
+      return blocks;
+    };
+
+    // テキストだけ抽出（比較用）
+    const textOnly = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+    const beforeBlocks = extractBlocks(beforeHtml);
+    const beforeTexts = new Set(beforeBlocks.map(textOnly));
+
+    const afterBlocks = extractBlocks(afterHtml);
+
+    // 修正後のブロックのうち、修正前に存在しないものをハイライト
+    const highlightedBlocks: string[] = [];
+    for (let i = 0; i < afterBlocks.length; i++) {
+      const t = textOnly(afterBlocks[i]);
+      if (t.length > 0 && !beforeTexts.has(t)) {
+        highlightedBlocks.push(afterBlocks[i]);
+      }
+    }
+
+    if (highlightedBlocks.length === 0) return afterHtml;
+
+    let result = afterHtml;
+    for (let i = 0; i < highlightedBlocks.length; i++) {
+      const block = highlightedBlocks[i];
+      const highlighted = `<div style="background:#fff9c4;border-left:3px solid #f9a825;padding:2px 0;margin:2px 0;">${block}</div>`;
+      result = result.replace(block, highlighted);
+    }
+    return result;
+  };
   const titleChanged = changed(result.original.title, result.article.title);
 
   // Diff badge
@@ -2934,18 +2979,18 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#c0392b", marginBottom: 4 }}>修正前</div>
-          <div style={{ fontSize: 13, padding: "8px 12px", background: "#fef9f9", borderRadius: 6, borderLeft: "3px solid #e74c3c", color: "#333", lineHeight: 1.6 }}>{before}</div>
+          <div style={{ fontSize: 13, padding: "8px 12px", background: "#fef9f9", borderRadius: 6, borderLeft: "3px solid #e74c3c", color: "#333", lineHeight: 1.6, textDecoration: "line-through", opacity: 0.7 }}>{before}</div>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#1e8449", marginBottom: 4 }}>修正後</div>
-          <div style={{ fontSize: 13, padding: "8px 12px", background: "#f9fef9", borderRadius: 6, borderLeft: "3px solid #27ae60", color: "#333", lineHeight: 1.6 }}>{after}</div>
+          <div style={{ fontSize: 13, padding: "8px 12px", background: "#fff9c4", borderRadius: 6, borderLeft: "3px solid #f9a825", color: "#333", lineHeight: 1.6, fontWeight: 600 }}>{after}</div>
         </div>
       </div>
     );
   };
 
   // Tab button for content view toggle
-  const ViewTab = ({ id, label }: { id: "side" | "before" | "after"; label: string }) => (
+  const ViewTab = ({ id, label }: { id: "side" | "before" | "after" | "diff"; label: string }) => (
     <button
       onClick={() => setContentView(id)}
       style={{
@@ -3014,12 +3059,26 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
       {/* HTML Content — View Toggle */}
       <Section label="本文" isChanged={changed(result.original.content, result.article.htmlContent)}>
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <ViewTab id="diff" label="変更箇所ハイライト" />
           {!isMobile && <ViewTab id="side" label="並べて比較" />}
           <ViewTab id="before" label="修正前" />
           <ViewTab id="after" label="修正後" />
         </div>
 
-        {contentView === "side" ? (
+        {contentView === "diff" ? (
+          <div>
+            <div style={{ background: "#f9a825", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "6px 6px 0 0", textAlign: "center" }}>
+              修正後（変更箇所 = 黄色ハイライト）
+            </div>
+            <div style={{ fontSize: 13, maxHeight: 600, overflowY: "auto", padding: 16, borderRadius: "0 0 8px 8px", lineHeight: 1.8, color: "#333", background: "#fff", border: "1px solid #e0e0e0", borderTop: "none" }}
+              dangerouslySetInnerHTML={{ __html: buildDiffHtml(result.original.content, result.article.htmlContent) }}
+            />
+            <div style={{ marginTop: 6, fontSize: 11, color: C.textMuted, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-block", width: 14, height: 14, background: "#fff9c4", borderLeft: "3px solid #f9a825", borderRadius: 2 }} />
+              変更・追加された箇所
+            </div>
+          </div>
+        ) : contentView === "side" ? (
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1, position: "relative" }}>
               <div style={{ position: "sticky", top: 0, background: "#e74c3c", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "6px 6px 0 0", textAlign: "center" }}>修正前</div>
