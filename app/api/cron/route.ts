@@ -124,8 +124,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Claude APIで記事生成（ターゲット年代に応じた文体で）
-    const article = await generateArticle(config.anthropicApiKey, keyword, theme, genre.name, targetAge);
+    // 0.5. 既存記事リストを取得（内部リンク用）
+    let siteExistingPosts: { title: string; url: string }[] = [];
+    try {
+      const recentPosts = await wp.getRecentPosts(50);
+      siteExistingPosts = recentPosts
+        .filter((p) => p.status === "publish")
+        .map((p) => ({ title: p.title?.rendered || "", url: p.link }));
+    } catch {}
+
+    // 1. Claude APIで記事生成（ターゲット年代に応じた文体で + 内部リンク用既存記事付き）
+    const article = await generateArticle(config.anthropicApiKey, keyword, theme, genre.name, targetAge, undefined, undefined, siteExistingPosts);
 
     // 1.2. ファクトチェック＆改良（有効時のみ実行、失敗時はスキップ）
     if (config.factCheckEnabled) {

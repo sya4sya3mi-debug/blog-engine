@@ -172,7 +172,16 @@ export async function POST(req: NextRequest) {
           }
           const kw = keyword || theme.keywords[0];
           currentThemeId = theme.id;
-          article = await generateArticle(config.anthropicApiKey, kw, theme, genre.name, age, undefined, balloonOpts);
+          // 既存記事リスト取得（内部リンク用）
+          let siteExistingPosts: { title: string; url: string }[] = [];
+          try {
+            const wpForLinks = new WordPressClient(config.wpSiteUrl, config.wpUsername, config.wpAppPassword);
+            const recentPosts = await wpForLinks.getRecentPosts(50);
+            siteExistingPosts = recentPosts
+              .filter((p: any) => p.status === "publish")
+              .map((p: any) => ({ title: p.title?.rendered || "", url: p.link }));
+          } catch {}
+          article = await generateArticle(config.anthropicApiKey, kw, theme, genre.name, age, undefined, balloonOpts, siteExistingPosts);
 
           // テーマモード: 提携先DBのリンクを優先、なければ楽天から自動検索
           let themeLinks = affiliateLinks || [];

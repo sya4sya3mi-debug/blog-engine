@@ -566,8 +566,39 @@ ${instruction}
 - 日付の入れ方はパターンを参考に、最も自然な形を選ぶ（必ず入れる必要はない）`;
 }
 
+// ----- 内部リンク挿入ブロック（既存記事URLベース） -----
+function buildInternalLinkBlock(existingPosts?: { title: string; url: string }[]): string {
+  if (!existingPosts || existingPosts.length === 0) {
+    return `## 内部リンク
+サイト内の関連記事がまだないため、内部リンクプレースホルダーのみ配置してください。
+- 形式：「<p class="internal-link-suggestion">▶ 【関連記事】{関連するテーマの記事タイトル例}</p>」
+- 1〜2箇所に配置`;
+  }
+
+  const postList = existingPosts.map((p, i) => `${i + 1}. 「${p.title}」 → ${p.url}`).join("\n");
+
+  return `## 内部リンク（SEO最重要 — 必ず実行すること）
+以下はサイト内の既存記事一覧です。この中から関連性の高い記事を選んで**必ず内部リンクを挿入**してください。
+
+### 既存記事リスト
+${postList}
+
+### 内部リンク挿入ルール（厳守）
+1. **必ず3〜5箇所**の内部リンクを本文中に挿入すること（0箇所はNG）
+2. リンク形式: <a href="記事URL" style="color:#7c3aed;text-decoration:underline;font-weight:500;">アンカーテキスト</a>
+3. **アンカーテキスト**: リンク先の記事内容を表す自然なフレーズ（2〜15文字）。「こちら」「この記事」は絶対NG
+4. 配置場所: 本文中の関連トピックに言及している箇所に自然に溶け込ませる
+5. 加えて、各H2セクション末尾付近に関連記事ボックスを1〜2箇所配置:
+   <div class="internal-link-box" style="background:#f8f0ff;border-left:4px solid #9b59b6;padding:12px 16px;margin:16px 0;border-radius:4px;font-size:14px;">
+     <a href="記事URL" rel="noopener" style="color:#7c3aed;text-decoration:none;font-weight:bold;">▶ 【関連記事】記事タイトル</a>
+   </div>
+6. **存在しないURLへのリンクは絶対に作らない**。上記リストにある記事のみリンクすること
+7. 同じ記事への重複リンクは最大2回まで（インライン1回＋ボックス1回）
+8. 記事の上部（導入文〜最初のH2）に最も重要な関連記事リンクを配置する（SEOクロール優先度が高い）`;
+}
+
 // ----- 自動生成用プロンプト -----
-function buildAutoPrompt(keyword: string, theme: SubTheme, genreName: string, targetAge: TargetAge): string {
+function buildAutoPrompt(keyword: string, theme: SubTheme, genreName: string, targetAge: TargetAge, existingPosts?: { title: string; url: string }[]): string {
   const articleIntent = theme.articleIntent || "uru";
 
   return `あなたはSEOに精通した美容ブログのプロライターです。
@@ -591,6 +622,8 @@ ${COMPLIANCE_BLOCK}
 ${REFERENCES_BLOCK}
 
 ${buildCtaBlock(articleIntent, theme.id)}
+
+${buildInternalLinkBlock(existingPosts)}
 
 ## 重要：黄色マーカー装飾（必ず実行すること）
 htmlContent内で読者にとって特に重要な箇所に、以下のHTMLタグで黄色マーカーを引いてください：
@@ -1184,8 +1217,9 @@ export async function generateArticle(
   targetAge: TargetAge = "30s",
   trendContext?: string,
   balloonOpts?: { authorIconUrl?: string; authorName?: string },
+  existingPosts?: { title: string; url: string }[],
 ): Promise<GeneratedArticle> {
-  let prompt = buildAutoPrompt(keyword, theme, genreName, targetAge);
+  let prompt = buildAutoPrompt(keyword, theme, genreName, targetAge, existingPosts);
   if (trendContext) {
     prompt += `\n\n【最新トレンド情報】以下の最新トレンド情報を記事に反映してください。ただし、情報の正確性を確認できない場合は「最近注目されている」程度の言及にとどめてください：\n${trendContext}`;
   }
