@@ -2933,12 +2933,12 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
     return (
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#e74c3c", marginBottom: 4 }}>修正前</div>
-          <div style={{ fontSize: 13, padding: "8px 12px", background: "#fdf0f0", borderRadius: 6, border: "1px solid #f5c6cb", color: "#721c24", lineHeight: 1.6 }}>{before}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#c0392b", marginBottom: 4 }}>修正前</div>
+          <div style={{ fontSize: 13, padding: "8px 12px", background: "#fef9f9", borderRadius: 6, borderLeft: "3px solid #e74c3c", color: "#333", lineHeight: 1.6 }}>{before}</div>
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#27ae60", marginBottom: 4 }}>修正後</div>
-          <div style={{ fontSize: 13, padding: "8px 12px", background: "#f0fdf4", borderRadius: 6, border: "1px solid #c3e6cb", color: "#155724", lineHeight: 1.6 }}>{after}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#1e8449", marginBottom: 4 }}>修正後</div>
+          <div style={{ fontSize: 13, padding: "8px 12px", background: "#f9fef9", borderRadius: 6, borderLeft: "3px solid #27ae60", color: "#333", lineHeight: 1.6 }}>{after}</div>
         </div>
       </div>
     );
@@ -2959,9 +2959,11 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
   );
 
   const htmlPanelStyle = (type: "before" | "after"): React.CSSProperties => ({
-    flex: 1, fontSize: 13, maxHeight: 500, overflowY: "auto" as const, padding: 16, borderRadius: 8, lineHeight: 1.8,
-    background: type === "before" ? "#fdf8f8" : "#f8fdf8",
-    border: `1px solid ${type === "before" ? "#f0d0d0" : "#c3e6cb"}`,
+    flex: 1, fontSize: 13, maxHeight: 500, overflowY: "auto" as const, padding: 16, borderRadius: "0 0 8px 8px", lineHeight: 1.8,
+    color: "#333", background: type === "before" ? "#fefefe" : "#fcfefc",
+    borderLeft: `3px solid ${type === "before" ? "#e74c3c" : "#27ae60"}`,
+    borderRight: `1px solid ${type === "before" ? "#f0e0e0" : "#d0e8d0"}`,
+    borderBottom: `1px solid ${type === "before" ? "#f0e0e0" : "#d0e8d0"}`,
   });
 
   return (
@@ -2977,14 +2979,14 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
       <Section label="メタディスクリプション" isChanged={!!result.article.metaDescription}>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#e74c3c", marginBottom: 4 }}>修正前</div>
-            <div style={{ fontSize: 12, padding: "8px 12px", background: "#fdf0f0", borderRadius: 6, border: "1px solid #f5c6cb", color: "#721c24", lineHeight: 1.6 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#c0392b", marginBottom: 4 }}>修正前</div>
+            <div style={{ fontSize: 12, padding: "8px 12px", background: "#fef9f9", borderRadius: 6, borderLeft: "3px solid #e74c3c", color: "#333", lineHeight: 1.6 }}>
               {result.original.meta?.metaDescription || result.original.meta?._seo_description || "(なし)"}
             </div>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#27ae60", marginBottom: 4 }}>修正後</div>
-            <div style={{ fontSize: 12, padding: "8px 12px", background: "#f0fdf4", borderRadius: 6, border: "1px solid #c3e6cb", color: "#155724", lineHeight: 1.6 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#1e8449", marginBottom: 4 }}>修正後</div>
+            <div style={{ fontSize: 12, padding: "8px 12px", background: "#f9fef9", borderRadius: 6, borderLeft: "3px solid #27ae60", color: "#333", lineHeight: 1.6 }}>
               {result.article.metaDescription || "(なし)"}
             </div>
           </div>
