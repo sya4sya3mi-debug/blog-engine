@@ -946,6 +946,18 @@ function extractJSON(text: string): ParsedArticle {
     parsed.htmlContent = parsed.html_content || parsed.html || parsed.content || parsed.body || "";
   }
   if (!parsed.htmlContent) {
+    // 最終手段: JSON文字列から htmlContent の値を直接正規表現で抽出
+    const rawMatch = jsonStr.match(/"htmlContent"\s*:\s*"([\s\S]+)/);
+    if (rawMatch) {
+      // 切断されたhtmlContentの値を回収（末尾の閉じクォート・括弧がなくてもOK）
+      let rawVal = rawMatch[1];
+      // 末尾の "} や ", 等を除去
+      rawVal = rawVal.replace(/"\s*[,}}\]]*\s*$/, "");
+      // JSONエスケープをデコード
+      try { parsed.htmlContent = JSON.parse('"' + rawVal + '"'); } catch { parsed.htmlContent = rawVal.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"); }
+    }
+  }
+  if (!parsed.htmlContent) {
     throw new Error("Claude APIのレスポンスに htmlContent が含まれていません。レスポンス先頭: " + text.slice(0, 200));
   }
 
@@ -1999,9 +2011,11 @@ ${REFERENCES_BLOCK}
   "products": [
     {"name": "商品名", "description": "特徴", "brand": "ブランド", "price": 3980, "rating": 4.5, "reviewCount": 100}
   ],
-  "htmlContent": "編集後のHTML本文"
+  "htmlContent": "編集後のHTML本文（★このフィールドは必ず最後まで出力すること。途中で切らない）"
 }
-\`\`\``;
+\`\`\`
+
+★重要：htmlContentは記事の全HTMLを省略せず完全に出力してください。トークン数が多くても途中で止めないでください。`;
 
   return header + modeBlock + footer;
 }
@@ -2015,7 +2029,7 @@ export async function rewriteArticle(
   options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
 ): Promise<GeneratedArticle> {
   const prompt = buildRewritePrompt(existingTitle, existingHtml, mode, options);
-  const responseText = await callClaude(apiKey, prompt, 12000);
+  const responseText = await callClaude(apiKey, prompt, 16000);
   const parsed = extractJSON(responseText);
   return buildGeneratedArticle(
     parsed,
