@@ -255,6 +255,25 @@ export class WordPressClient {
     return { id: media.id, url: media.source_url };
   }
 
+  /** 単一記事を本文含めて取得（リライト用） */
+  async getPost(postId: number): Promise<{
+    id: number; title: string; content: string; slug: string;
+    status: string; link: string; featured_media: number;
+    meta?: Record<string, string>;
+  }> {
+    const raw = await this.request<any>(`/posts/${postId}?context=edit`);
+    return {
+      id: raw.id,
+      title: raw.title?.raw || raw.title?.rendered || "",
+      content: raw.content?.raw || raw.content?.rendered || "",
+      slug: raw.slug,
+      status: raw.status,
+      link: raw.link,
+      featured_media: raw.featured_media || 0,
+      meta: raw.meta,
+    };
+  }
+
   /** キーワードで既存投稿を検索（内部リンク用） */
   async searchPosts(keyword: string, count: number = 5): Promise<{ id: number; link: string; title: string; slug: string }[]> {
     const posts = await this.request<{ id: number; link: string; title: { rendered: string }; slug: string }[]>(

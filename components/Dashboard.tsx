@@ -28,10 +28,14 @@ async function safeJsonResponse(res: Response): Promise<any> {
   }
   const trimmed = text.trim();
   if (!trimmed) throw new Error("サーバーから空のレスポンスが返されました");
+  const codeBlockMatch = trimmed.match(/```(?:[a-z0-9_-]+)?\s*([\s\S]*?)```/i);
+  const normalized = (codeBlockMatch ? codeBlockMatch[1] : trimmed)
+    .replace(/^\uFEFF/, "")
+    .trim();
   try {
-    return JSON.parse(trimmed);
+    return JSON.parse(normalized);
   } catch {
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}$/);
+    const jsonMatch = normalized.match(/\{[\s\S]*\}$|\[[\s\S]*\]$/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
     throw new Error("レスポンスの解析に失敗しました: " + trimmed.slice(0, 100));
   }
@@ -330,12 +334,7 @@ export default function Dashboard() {
       setTimeout(() => controller.abort(), 120000);
       const h = { "Content-Type": "application/json", Authorization: `Bearer ${getPwd()}` };
       const res = await fetch("/api/article-theme-suggest", { method: "POST", headers: h, signal: controller.signal });
-      const rawText = await res.text();
-      if (!res.ok) throw new Error(rawText.slice(0, 200) || `サーバーエラー (${res.status})`);
-      const trimmed = rawText.trim();
-      const jsonMatch = trimmed.match(/\{[^{}]*"(success|error|themes)"[\s\S]*\}/);
-      if (!jsonMatch) { setArticleThemeError("AI会議の応答を解析できませんでした"); setArticleThemesLoading(false); return; }
-      const data = JSON.parse(jsonMatch[0]);
+      const data = await safeJsonResponse(res);
       if (data.error) {
         setArticleThemeError(data.error);
       } else if (data.themes?.length > 0) {
@@ -399,14 +398,9 @@ export default function Dashboard() {
           },
         }),
       });
-      const rawText = await res.text();
-      if (!res.ok) throw new Error(rawText.slice(0, 200) || `サーバーエラー (${res.status})`);
-      const jsonMatch = rawText.trim().match(/\{[\s\S]*\}$/);
-      if (jsonMatch) {
-        const result = JSON.parse(jsonMatch[0]);
-        setFactCheckResult(result);
-        setUseImprovedVersion(result.success);
-      }
+      const result = await safeJsonResponse(res);
+      setFactCheckResult(result);
+      setUseImprovedVersion(Boolean(result?.success));
     } catch (e: any) {
       console.warn("[FactCheck] Error:", e.message);
     }
@@ -954,6 +948,8 @@ export default function Dashboard() {
     { id: "trends", label: "トレンド", icon: "📊" },
     { id: "x-schedule", label: "X投稿管理", icon: "𝕏" },
     { id: "themes", label: "テーマ一覧", icon: "◎" },
+    { id: "inject-images", label: "画像挿入", icon: "🖼" },
+    { id: "rewrite", label: "リライト", icon: "✏" },
     { id: "settings", label: "設定", icon: "⚙" },
   ];
 
@@ -2730,6 +2726,12 @@ export default function Dashboard() {
           {/* ====== X SCHEDULE TAB ====== */}
           {activeTab === "x-schedule" && <XScheduleTab isMobile={isMobile} C={C} authToken={getPwd()} />}
 
+          {/* ====== INJECT IMAGES TAB ====== */}
+          {activeTab === "inject-images" && <InjectImagesTab isMobile={isMobile} C={C} authToken={getPwd()} />}
+
+          {/* ====== REWRITE TAB ====== */}
+          {activeTab === "rewrite" && <RewriteTab isMobile={isMobile} C={C} authToken={getPwd()} />}
+
           {/* ====== SETTINGS TAB ====== */}
           {activeTab === "settings" && (
             <div style={{ maxWidth: isMobile ? "100%" : 640 }}>
@@ -2887,6 +2889,485 @@ export default function Dashboard() {
 
 // ==========================================
 // ==========================================
+// ==========================================
+// Rewrite Tab Component
+// ==========================================
+function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<string, string>; authToken: string }) {
+  const [posts, setPosts] = useState<{ id: number; title: string; slug: string; link: string }[]>([]);
+  const [filteredPosts, setFilteredPosts] = useState<typeof posts>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+
+  // 選択・設定
+  const [selectedPost, setSelectedPost] = useState<typeof posts[0] | null>(null);
+  const [mode, setMode] = useState<"seo" | "add-products" | "full" | "internal-links">("seo");
+  const [keyword, setKeyword] = useState("");
+  const [themeLabel, setThemeLabel] = useState("");
+  const [productsText, setProductsText] = useState("");
+
+  // リライト結果
+  const [processing, setProcessing] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState("");
+
+  // WordPress 更新
+  const [updating, setUpdating] = useState(false);
+  const [updateDone, setUpdateDone] = useState(false);
+
+  const fetchPosts = async () => {
+    setLoading(true);
+    setFetchError("");
+    setPosts([]);
+    setFilteredPosts([]);
+    setSelectedPost(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/rewrite", { headers: { Authorization: `Bearer ${authToken}` } });
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー (${res.status}): ${text.slice(0, 100)}`); }
+      if (!res.ok) throw new Error(data.error || "取得失敗");
+      setPosts(data.posts);
+      setFilteredPosts(data.posts);
+    } catch (e: any) {
+      setFetchError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setFilteredPosts(posts);
+    } else {
+      const lower = q.toLowerCase();
+      setFilteredPosts(posts.filter((p) => p.title.toLowerCase().includes(lower) || p.slug.includes(lower)));
+    }
+  };
+
+  const runRewrite = async () => {
+    if (!selectedPost) return;
+    setProcessing(true);
+    setError("");
+    setResult(null);
+    setUpdateDone(false);
+    try {
+      const products = productsText.trim() ? productsText.split("\n").map((s) => s.trim()).filter(Boolean) : undefined;
+      const res = await fetch("/api/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          postId: selectedPost.id,
+          mode,
+          keyword: keyword.trim() || undefined,
+          themeLabel: themeLabel.trim() || undefined,
+          products,
+          autoUpdate: false,
+        }),
+      });
+      const rawText = await res.text();
+      // ストリーミングレスポンス: ハートビートの空白を除去して末尾のJSONを取得
+      const jsonText = rawText.trim();
+      let data: any;
+      try { data = JSON.parse(jsonText); } catch { throw new Error(`サーバーエラー (${res.status}): ${rawText.slice(0, 200)}`); }
+      if (!data.success) throw new Error(data.error || "リライト失敗");
+      setResult(data);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const applyToWordPress = async () => {
+    if (!selectedPost || !result) return;
+    setUpdating(true);
+    try {
+      const res = await fetch("/api/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          postId: selectedPost.id,
+          mode,
+          keyword: keyword.trim() || undefined,
+          themeLabel: themeLabel.trim() || undefined,
+          products: productsText.trim() ? productsText.split("\n").map((s) => s.trim()).filter(Boolean) : undefined,
+          autoUpdate: true,
+        }),
+      });
+      const rawText2 = await res.text();
+      const jsonText2 = rawText2.trim();
+      let data2: any;
+      try { data2 = JSON.parse(jsonText2); } catch { throw new Error(`サーバーエラー (${res.status}): ${rawText2.slice(0, 200)}`); }
+      if (!data2.success) throw new Error(data2.error || "更新失敗");
+      setUpdateDone(true);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const modeLabels: Record<string, { label: string; desc: string }> = {
+    seo: { label: "SEO改善", desc: "日付更新・見出し最適化・内部リンク追加など。内容は変えない" },
+    "internal-links": { label: "内部リンク強化", desc: "関連度分析に基づく内部リンク最適配置。本文は変えずSEO強化" },
+    "add-products": { label: "商品追加", desc: "本文はそのまま、アフィリエイト商品セクションだけ追加" },
+    full: { label: "総合改善", desc: "SEO + 文章の質向上 + 商品追加。赤ペン添削レベルの改善" },
+  };
+
+  return (
+    <div style={{ maxWidth: isMobile ? "100%" : 900 }}>
+      {/* Header */}
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700 }}>✏ 既存記事リライト</h3>
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: C.textMuted }}>
+          公開済み記事のSEO改善・アフィリエイト商品追加・文章改善を行います。既存の内容はベースとして維持されます。
+        </p>
+        <button
+          onClick={fetchPosts}
+          disabled={loading || processing}
+          style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, opacity: loading || processing ? 0.6 : 1 }}
+        >
+          {loading ? "取得中..." : "📋 公開記事を取得"}
+        </button>
+        {fetchError && <p style={{ color: "#e74c3c", fontSize: 13, marginTop: 8 }}>{fetchError}</p>}
+      </div>
+
+      {/* Post selection */}
+      {posts.length > 0 && !selectedPost && (
+        <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>記事を選択（{posts.length}件）</span>
+          </div>
+          <input
+            type="text"
+            placeholder="記事名で検索..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+          />
+          <div style={{ maxHeight: 340, overflowY: "auto" }}>
+            {filteredPosts.map((post) => (
+              <button
+                key={post.id}
+                onClick={() => setSelectedPost(post)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 8px", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, background: "transparent", border: "none", color: C.text, textAlign: "left" }}
+              >
+                <span style={{ flex: 1 }} dangerouslySetInnerHTML={{ __html: post.title }} />
+                <span style={{ color: C.textMuted, fontSize: 11, flexShrink: 0 }}>ID:{post.id}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rewrite settings */}
+      {selectedPost && !result && (
+        <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>対象記事: </span>
+              <span style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: selectedPost.title }} />
+              <span style={{ color: C.textMuted, fontSize: 11, marginLeft: 8 }}>ID:{selectedPost.id}</span>
+            </div>
+            <button onClick={() => { setSelectedPost(null); setResult(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 11 }}>変更</button>
+          </div>
+
+          {/* Mode selection */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, display: "block", marginBottom: 8 }}>リライトモード</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(["seo", "internal-links", "add-products", "full"] as const).map((m) => (
+                <label key={m} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, border: `1px solid ${mode === m ? C.accent : C.border}`, cursor: "pointer", background: mode === m ? `${C.accent}10` : "transparent" }}>
+                  <input type="radio" name="rewrite-mode" checked={mode === m} onChange={() => setMode(m)} style={{ marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{modeLabels[m].label}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>{modeLabels[m].desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Optional keyword */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>キーワード（任意）</label>
+            <input
+              type="text"
+              placeholder="例: 医療脱毛 おすすめ"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: 13, boxSizing: "border-box" }}
+            />
+          </div>
+
+          {/* Optional theme */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>テーマ（任意）</label>
+            <input
+              type="text"
+              placeholder="例: 医療脱毛"
+              value={themeLabel}
+              onChange={(e) => setThemeLabel(e.target.value)}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: 13, boxSizing: "border-box" }}
+            />
+          </div>
+
+          {/* Products (for add-products and full modes) */}
+          {(mode === "add-products" || mode === "full") && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>追加する商品名（1行に1つ）{mode === "add-products" ? "（必須）" : "（任意）"}</label>
+              <textarea
+                placeholder={"ケシミンクリームEX\nメラノCC 薬用美白美容液\nトランシーノ薬用ホワイトニングエッセンスEXII"}
+                value={productsText}
+                onChange={(e) => setProductsText(e.target.value)}
+                rows={4}
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
+              />
+            </div>
+          )}
+
+          <button
+            onClick={runRewrite}
+            disabled={processing || (mode === "add-products" && !productsText.trim())}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 14, opacity: processing || (mode === "add-products" && !productsText.trim()) ? 0.5 : 1 }}
+          >
+            {processing ? "リライト実行中..." : `✏ リライト実行（${modeLabels[mode].label}）`}
+          </button>
+          {processing && <p style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>Claude AI が記事を編集中です。1〜2分かかります...</p>}
+          {error && <p style={{ color: "#e74c3c", fontSize: 13, marginTop: 8 }}>{error}</p>}
+        </div>
+      )}
+
+      {/* Result preview */}
+      {result && (
+        <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+          <h4 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>リライト結果プレビュー</h4>
+
+          {/* Title comparison */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>タイトル</div>
+            {result.original.title !== result.article.title ? (
+              <div>
+                <div style={{ fontSize: 13, color: "#e74c3c", textDecoration: "line-through", marginBottom: 2 }}>{result.original.title}</div>
+                <div style={{ fontSize: 13, color: "#27ae60", fontWeight: 600 }}>{result.article.title}</div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13 }}>{result.article.title}（変更なし）</div>
+            )}
+          </div>
+
+          {/* Meta description */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>メタディスクリプション</div>
+            <div style={{ fontSize: 12, color: C.text, background: C.bg, padding: 10, borderRadius: 6 }}>{result.article.metaDescription}</div>
+          </div>
+
+          {/* Focus keyword */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>フォーカスキーワード</div>
+            <div style={{ fontSize: 13 }}>{result.article.focusKeyword}</div>
+          </div>
+
+          {/* HTML preview */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>本文プレビュー</div>
+            <div
+              style={{ fontSize: 13, maxHeight: 400, overflowY: "auto", background: C.bg, padding: 16, borderRadius: 8, border: `1px solid ${C.border}`, lineHeight: 1.8 }}
+              dangerouslySetInnerHTML={{ __html: result.article.htmlContent }}
+            />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {!updateDone ? (
+              <button
+                onClick={applyToWordPress}
+                disabled={updating}
+                style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "#27ae60", color: "#fff", fontWeight: 700, fontSize: 14, opacity: updating ? 0.5 : 1 }}
+              >
+                {updating ? "WordPress 更新中..." : "✅ WordPress に反映する"}
+              </button>
+            ) : (
+              <div style={{ padding: "10px 20px", borderRadius: 8, background: "#d4edda", color: "#155724", fontWeight: 700, fontSize: 14 }}>
+                ✅ WordPress に反映しました
+              </div>
+            )}
+            <button
+              onClick={() => { setResult(null); setError(""); setUpdateDone(false); }}
+              style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 13 }}
+            >
+              やり直す
+            </button>
+            <button
+              onClick={() => { setSelectedPost(null); setResult(null); setError(""); setUpdateDone(false); }}
+              style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 13 }}
+            >
+              別の記事を選択
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// Inject Images Tab Component
+// ==========================================
+function InjectImagesTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<string, string>; authToken: string }) {
+  const [posts, setPosts] = useState<{ id: number; title: string }[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string }>({ done: 0, total: 0, current: "" });
+  const [results, setResults] = useState<{ id: number; title: string; ok: boolean; error?: string; imageUrl?: string }[]>([]);
+  const [fetchError, setFetchError] = useState("");
+
+  const fetchPosts = async () => {
+    setLoading(true);
+    setFetchError("");
+    setPosts([]);
+    setSelected(new Set());
+    setResults([]);
+    try {
+      const res = await fetch("/api/inject-images", { headers: { Authorization: `Bearer ${authToken}` } });
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー (${res.status}): ${text.slice(0, 100)}`); }
+      if (!res.ok) throw new Error(data.error || "取得失敗");
+      setPosts(data.posts);
+    } catch (e: any) {
+      setFetchError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleAll = () => {
+    if (selected.size === posts.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(posts.map((p) => p.id)));
+    }
+  };
+
+  const toggle = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const runInject = async () => {
+    const targets = posts.filter((p) => selected.has(p.id));
+    if (targets.length === 0) return;
+    setProcessing(true);
+    setResults([]);
+    setProgress({ done: 0, total: targets.length, current: "" });
+    const newResults: typeof results = [];
+    for (let i = 0; i < targets.length; i++) {
+      const post = targets[i];
+      setProgress({ done: i, total: targets.length, current: post.title });
+      try {
+        const res = await fetch("/api/inject-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ postId: post.id, title: post.title }),
+        });
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー (${res.status}): ${text.slice(0, 100)}`); }
+        if (!res.ok) throw new Error(data.error || "失敗");
+        newResults.push({ id: post.id, title: post.title, ok: true, imageUrl: data.imageUrl });
+      } catch (e: any) {
+        newResults.push({ id: post.id, title: post.title, ok: false, error: e.message });
+      }
+      setResults([...newResults]);
+    }
+    setProgress((p) => ({ ...p, done: targets.length, current: "" }));
+    setProcessing(false);
+  };
+
+  return (
+    <div style={{ maxWidth: isMobile ? "100%" : 800 }}>
+      {/* Header card */}
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700 }}>🖼 画像なし記事への画像生成・挿入</h3>
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: C.textMuted }}>
+          アイキャッチ画像が設定されていない公開記事を取得し、DALL-E 3 で画像を生成してアイキャッチに設定します。
+        </p>
+        <button
+          onClick={fetchPosts}
+          disabled={loading || processing}
+          style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, opacity: loading || processing ? 0.6 : 1 }}
+        >
+          {loading ? "取得中..." : "📋 画像なし記事を取得"}
+        </button>
+        {fetchError && <p style={{ color: "#e74c3c", fontSize: 13, marginTop: 8 }}>{fetchError}</p>}
+      </div>
+
+      {/* Post list */}
+      {posts.length > 0 && (
+        <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>画像なし記事: {posts.length} 件</span>
+            <button
+              onClick={toggleAll}
+              style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", color: C.text, fontSize: 12 }}
+            >
+              {selected.size === posts.length ? "全解除" : "全選択"}
+            </button>
+          </div>
+          <div style={{ maxHeight: 340, overflowY: "auto", marginBottom: 16 }}>
+            {posts.map((post) => (
+              <label key={post.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13 }}>
+                <input type="checkbox" checked={selected.has(post.id)} onChange={() => toggle(post.id)} />
+                <span style={{ flex: 1 }} dangerouslySetInnerHTML={{ __html: post.title }} />
+                <span style={{ color: C.textMuted, fontSize: 11 }}>ID:{post.id}</span>
+              </label>
+            ))}
+          </div>
+          <button
+            onClick={runInject}
+            disabled={processing || selected.size === 0}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", background: "#27ae60", color: "#fff", fontWeight: 700, fontSize: 14, opacity: processing || selected.size === 0 ? 0.5 : 1 }}
+          >
+            {processing ? `生成・挿入中... (${progress.done}/${progress.total})` : `🖼 選択した ${selected.size} 件に画像を生成・挿入`}
+          </button>
+          {processing && progress.current && (
+            <p style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>処理中: {progress.current}</p>
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {results.length > 0 && (
+        <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24 }}>
+          <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>処理結果</h4>
+          {results.map((r) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+              <span>{r.ok ? "✅" : "❌"}</span>
+              <span style={{ flex: 1 }} dangerouslySetInnerHTML={{ __html: r.title }} />
+              {r.ok && r.imageUrl && (
+                <a href={r.imageUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent }}>画像を確認</a>
+              )}
+              {!r.ok && <span style={{ color: "#e74c3c", fontSize: 11 }}>{r.error}</span>}
+            </div>
+          ))}
+          <p style={{ marginTop: 10, fontSize: 12, color: C.textMuted }}>
+            成功: {results.filter((r) => r.ok).length} / {results.length} 件
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // X Schedule Tab Component
 // ==========================================
 function XScheduleTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<string, string>; authToken: string }) {

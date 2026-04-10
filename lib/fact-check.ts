@@ -112,6 +112,99 @@ const REVIEW_SYSTEM_PROMPT = `あなたは日本の美容・健康コンテン�
 
 // ----- メイン関数 -----
 
+function normalizeJsonCandidate(value: string): string {
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .replace(/^```(?:[a-z0-9_-]+)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+}
+
+function extractBalancedJson(value: string): string | null {
+  const start = value.search(/[{\[]/);
+  if (start === -1) return null;
+
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < value.length; i += 1) {
+    const ch = value[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{" || ch === "[") {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === "}" || ch === "]") {
+      const expected = ch === "}" ? "{" : "[";
+      if (stack[stack.length - 1] !== expected) {
+        return null;
+      }
+      stack.pop();
+      if (stack.length === 0) {
+        return value.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function collectJsonCandidates(value: string): string[] {
+  const trimmed = value.replace(/^\uFEFF/, "").trim();
+  const candidates: string[] = [];
+
+  const push = (candidate?: string | null) => {
+    if (!candidate) return;
+    const normalized = normalizeJsonCandidate(candidate);
+    if (!normalized || candidates.includes(normalized)) return;
+    candidates.push(normalized);
+  };
+
+  const fencedBlockPattern = /```(?:[a-z0-9_-]+)?\s*([\s\S]*?)```/gi;
+  let match: RegExpExecArray | null;
+  while ((match = fencedBlockPattern.exec(trimmed)) !== null) {
+    if (/^[{\[]/.test(match[1].trim())) {
+      push(match[1]);
+    }
+  }
+
+  push(trimmed);
+  push(extractBalancedJson(trimmed));
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    push(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+
+  const firstBracket = trimmed.indexOf("[");
+  const lastBracket = trimmed.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    push(trimmed.slice(firstBracket, lastBracket + 1));
+  }
+
+  return candidates;
+}
+
 export async function factCheckArticle(
   anthropicApiKey: string,
   article: FactCheckInput,
@@ -175,7 +268,24 @@ ${article.htmlContent || ""}`;
       }
     }
 
-    const parsed = JSON.parse(jsonText);
+    const parsed = (() => {
+      let result: any;
+      let parseError: Error | null = null;
+      for (const candidate of collectJsonCandidates(text)) {
+        try {
+          result = JSON.parse(candidate);
+          break;
+        } catch (error: any) {
+          parseError = error;
+        }
+      }
+      if (!result || typeof result !== "object") {
+        throw new Error(
+          `AIレビュー結果をJSONとして解析できませんでした: ${parseError?.message || "unknown error"} / response: ${text.slice(0, 200)}`,
+        );
+      }
+      return result;
+    })();
 
     // 改善後のHTMLに対してコンプライアンス自動修正を再実行（安全ネット）
     const improvedHtml = parsed.htmlContent || parsed.html_content || article.htmlContent;

@@ -1803,3 +1803,223 @@ ${REFERENCES_BLOCK}
   }
   return article;
 }
+
+// ==========================================
+// 既存記事リライト
+// ==========================================
+
+export type RewriteMode = "seo" | "add-products" | "full" | "internal-links";
+
+function buildRewritePrompt(
+  existingTitle: string,
+  existingHtml: string,
+  mode: RewriteMode,
+  options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
+): string {
+  const d = getDateLabels();
+  const keyword = options?.keyword || "(既存記事から推定)";
+  const themeLabel = options?.themeLabel || "(既存記事から推定)";
+
+  // --- 共通ヘッダー ---
+  const header = `あなたはSEOに精通した美容ブログのプロ編集者です。
+以下の既存記事を「編集」してください。
+
+★ 最重要ルール：記事の内容・構成・論調はそのまま維持すること。
+ゼロから書き直すのではなく、既存記事をベースに部分的な修正・追加だけを行う。
+既存の文章で問題ない箇所はそのまま残すこと。
+
+【既存タイトル】${existingTitle}
+【既存HTML本文】
+${existingHtml}
+
+【現在の日付情報】${d.monthLabel}（${d.halfLabel} / ${d.seasonLabel}）
+【狙うキーワード】${keyword}
+【テーマ】${themeLabel}`;
+
+  // --- モード別指示 ---
+  let modeBlock = "";
+
+  if (mode === "seo") {
+    modeBlock = `
+## 編集方針：SEO改善（内容は変えない）
+
+### 修正対象（これだけ直す）
+1. **日付の更新**: 古い年月表記（${CURRENT_YEAR - 1}年以前）→「${CURRENT_YEAR}年」「${d.monthLabel}」に置換
+2. **タイトル微調整**: 32文字以内。キーワードが前半に入っていなければ語順調整。年月ラベル更新
+3. **メタディスクリプション**: 120文字以内。既存を微調整（行動喚起が弱ければ追加）
+4. **H2見出しの微調整**: キーワードや共起語が不足している見出しだけ、自然な形で補強
+5. **導入文の微調整**: 最初の100文字にキーワードが含まれていなければ自然に追加
+6. **内部リンクの追加**: 関連記事への内部リンクプレースホルダーを1〜2箇所追加
+   形式: <p class="internal-link-suggestion">▶ 【関連記事】{テーマに関連する記事タイトル例}</p>
+7. **黄色マーカー**: 重要ポイントに3〜5箇所。形式: <span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要なテキスト</span>
+8. **FAQ更新**: 古い情報があれば更新。検索需要が高そうな質問に差し替え
+9. **参考文献の追加**: 参考文献セクションがなければ追加（最低2件）
+
+### 変えてはいけないこと（厳守）
+- 本文の内容・主張・論調はそのまま維持する
+- 既存のアフィリエイトリンク・商品紹介は一切触らない
+- 見出しの順序・階層構造は維持（H2/H3の追加は不要であれば行わない）
+- 段落の削除・大幅な書き換えはしない
+- 文体（ですます調等）は既存を踏襲`;
+  } else if (mode === "add-products") {
+    const productList = (options?.products || []).map((p, i) => `${i + 1}. ${p}`).join("\n");
+    modeBlock = `
+## 編集方針：アフィリエイト商品の追加のみ
+
+【追加する商品】
+${productList}
+
+### やること（これだけ）
+- 上記の商品を記事内の適切な位置に追加する
+- 各商品について「特徴」「こんな人におすすめ」を2〜3文で自然に紹介
+- 商品紹介の直後にアフィリエイトプレースホルダーを配置:
+  <p class="affiliate-placeholder">【アフィリエイトリンク挿入予定：商品名】</p>
+- 既存の比較表があれば新商品の行を追加
+- 「※ 効果には個人差があります」の注記を追加
+
+### 挿入位置のルール
+- 既存の商品紹介セクションがあればその直後に追加
+- なければ、まとめセクションの直前に新しい<h2>セクションとして挿入
+- 記事冒頭やFAQ内には絶対に挿入しない
+
+### 変えてはいけないこと（厳守）
+- 既存のタイトル・メタディスクリプション・スラッグはそのまま返す
+- 既存の本文テキストは1文字も変えない
+- 既存の商品紹介・アフィリエイトリンクは触らない
+- 既存の見出し構造は変えない`;
+  } else if (mode === "internal-links") {
+    const relatedCtx = options?.relatedPostsContext || "（関連記事データなし）";
+    modeBlock = `
+## 編集方針：内部リンク構造の強化のみ（SEO特化）
+
+★ この編集の目的はSEOのための内部リンク最適化のみです。本文の内容・表現は一切変えません。
+
+### 関連度分析に基づく挿入候補記事（スコア順）
+${relatedCtx}
+
+### やること（内部リンクの挿入のみ）
+
+#### 1. コンテキスト内部リンク（最重要 — 3〜5箇所）
+本文中で関連記事のトピックに自然に言及している箇所に、文脈に溶け込む形でインラインリンクを挿入。
+形式:
+<a href="{記事URL}" class="inline-internal-link" style="color:#7c3aed;text-decoration:underline;font-weight:500;">{アンカーテキスト}</a>
+
+**アンカーテキストのSEOルール（厳守）:**
+- リンク先記事のメインキーワードを含めること（「こちら」「この記事」は絶対NG）
+- 2〜15文字の自然な日本語フレーズ
+- 同じアンカーテキストを2回使わない
+- リンク先の内容を正確に表すこと
+
+#### 2. 関連記事ボックス（2〜3箇所）
+各H2セクションの末尾付近で、そのセクションの内容に最も関連する記事へのボックスリンクを配置。
+形式:
+<div class="internal-link-box" style="background:#f8f0ff;border-left:4px solid #9b59b6;padding:12px 16px;margin:16px 0;border-radius:4px;font-size:14px;">
+  <a href="{記事URL}" rel="noopener" style="color:#7c3aed;text-decoration:none;font-weight:bold;">▶ 【関連記事】{リンク先記事タイトル}</a>
+</div>
+
+#### 3. まとめセクション前の関連記事リスト（1箇所）
+まとめ（H2）の直前に、記事全体に関連する3〜5記事のリストを配置。
+形式:
+<div class="related-posts-section" style="background:#f0f4ff;border:1px solid #d0d8f0;border-radius:8px;padding:16px 20px;margin:24px 0;">
+  <p style="font-weight:700;font-size:15px;margin:0 0 10px;">📚 あわせて読みたい記事</p>
+  <ul style="margin:0;padding-left:20px;line-height:2;">
+    <li><a href="{URL}" style="color:#7c3aed;">{記事タイトル}</a></li>
+  </ul>
+</div>
+
+### SEO内部リンク配置の原則（厳守）
+- **トピカルクラスター構造**: 同じトピック群の記事同士をリンクで結ぶ（Googleがトピック権威性を評価）
+- **ハブ＆スポーク**: この記事をハブとして、関連するスポーク記事に均等にリンクジュースを分配
+- **リンクの深さ**: 記事上部（導入文〜最初のH2）に最も重要な関連記事へのリンクを配置（クロール優先度が高い）
+- **過剰リンク禁止**: 1記事あたり合計8〜12本の内部リンクが上限。それ以上は逆効果
+- **自然な文脈**: リンクは読者が「もっと知りたい」と思うタイミングに配置
+- **重複回避**: 同じ記事への内部リンクは最大2回まで（インライン1回＋ボックス1回）
+- **関連度スコアが高い記事を優先**: スコア上位の記事により多くのリンクを割り当てる
+
+### 変えてはいけないこと（厳守）
+- 本文の内容・主張・論調・表現は1文字も変えない
+- 既存の内部リンク・外部リンク・アフィリエイトリンクは一切触らない
+- タイトル・メタディスクリプション・スラッグは既存をそのまま返す
+- 見出し（H2/H3）のテキストは変えない
+- 画像・テーブル・リストの内容は変えない
+- FAQの内容は変えない（既存をそのまま返す）
+- 文体・フォントスタイル・装飾は変えない`;
+  } else {
+    // full mode
+    const productList = (options?.products || []).map((p, i) => `${i + 1}. ${p}`).join("\n");
+    const productSection = productList
+      ? `\n8. **商品追加**: 以下の商品を適切な位置に挿入。各商品に「特徴」「こんな人におすすめ」を2〜3文で紹介し、直後にプレースホルダー配置:\n   <p class="affiliate-placeholder">【アフィリエイトリンク挿入予定：商品名】</p>\n\n【追加する商品】\n${productList}`
+      : "";
+
+    modeBlock = `
+## 編集方針：総合改善（既存記事をベースに）
+
+★ 大原則：既存記事の内容・構成を尊重しつつ、以下の改善を加える。
+ゼロから書き直すのではなく「赤ペン添削」のイメージ。
+
+### 修正対象
+1. **情報の鮮度**: 古い年月→${CURRENT_YEAR}年に更新。古くなった情報があれば最新に
+2. **SEO**: タイトル微調整（32文字以内）、メタディスクリプション最適化（120文字以内）、H2への共起語補強、導入文にキーワード追加
+3. **文章の質**: 不自然な日本語・AIっぽい表現があれば自然な言い回しに修正。冗長な箇所を簡潔に
+4. **リンク改善**: 内部リンクプレースホルダーを1〜2箇所追加
+   形式: <p class="internal-link-suggestion">▶ 【関連記事】{関連テーマ記事タイトル例}</p>
+5. **黄色マーカー**: 3〜5箇所に調整。形式: <span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要なテキスト</span>
+6. **FAQ**: 古い情報更新。検索需要に合わせて質問を差し替え
+7. **参考文献**: なければ追加、あれば必要に応じて更新${productSection}
+
+### 変えてはいけないこと（厳守）
+- 記事の主旨・結論を変えない
+- 既存のアフィリエイトリンク・商品紹介の内容は維持
+- 段落の大量削除はしない（削る場合は冗長な1〜2文のみ）
+- 文体（ですます調等）は既存を踏襲
+- 見出しの順序は基本維持（明らかに読者体験を損なう場合のみ入れ替え可）`;
+  }
+
+  // --- 共通フッター: コンプライアンス + 参考文献 + 出力形式 ---
+  const footer = `
+
+${COMPLIANCE_BLOCK}
+
+${REFERENCES_BLOCK}
+
+## 出力形式
+以下のJSON形式で出力してください（他のテキストは一切不要）：
+
+\`\`\`json
+{
+  "title": "編集後のタイトル（変更不要なら既存タイトルをそのまま）",
+  "metaDescription": "120文字以内のメタディスクリプション",
+  "slug": "既存スラッグをそのまま維持（変更不要）",
+  "focusKeyword": "メインキーワード",
+  "tags": ["タグ1", "タグ2", "タグ3"],
+  "faq": [
+    {"question": "質問1", "answer": "回答1"},
+    {"question": "質問2", "answer": "回答2"}
+  ],
+  "products": [
+    {"name": "商品名", "description": "特徴", "brand": "ブランド", "price": 3980, "rating": 4.5, "reviewCount": 100}
+  ],
+  "htmlContent": "編集後のHTML本文"
+}
+\`\`\``;
+
+  return header + modeBlock + footer;
+}
+
+/** 既存記事のリライト（SEO改善 / 商品追加 / 総合改善 / 内部リンク強化） */
+export async function rewriteArticle(
+  apiKey: string,
+  existingHtml: string,
+  existingTitle: string,
+  mode: RewriteMode,
+  options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
+): Promise<GeneratedArticle> {
+  const prompt = buildRewritePrompt(existingTitle, existingHtml, mode, options);
+  const responseText = await callClaude(apiKey, prompt, 12000);
+  const parsed = extractJSON(responseText);
+  return buildGeneratedArticle(
+    parsed,
+    options?.keyword || existingTitle,
+    options?.themeLabel || "リライト",
+  );
+}

@@ -40,6 +40,163 @@ export const INTERNAL_LINK_GRAPH: InternalLink[] = [
   { from: "biyou-clinic", to: "datsumo", anchor: "医療脱毛の体験レポートと選び方", context: "美容クリニックに通い始めたら、医療脱毛も合わせて検討する方が多いです。" },
 ];
 
+// ==========================================
+// SEO内部リンク強化: 関連度スコアリング
+// TF-IDF風のキーワード重複分析で関連記事を自動検出
+// ==========================================
+
+export interface ScoredPost {
+  id: number;
+  title: string;
+  link: string;
+  slug: string;
+  score: number;          // 関連度スコア（0〜1）
+  sharedKeywords: string[]; // 共通キーワード
+}
+
+/** HTMLタグ除去 + テキスト正規化 */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** 日本語テキストからキーワードを抽出（2〜8文字のカタカナ・漢字・英字チャンク） */
+function extractKeywords(text: string): Map<string, number> {
+  const freq = new Map<string, number>();
+
+  // カタカナ語（2文字以上）
+  const katakana = text.match(/[ァ-ヶー]{2,}/g) || [];
+  // 漢字チャンク（2〜8文字）
+  const kanji = text.match(/[一-龥々]{2,8}/g) || [];
+  // 英単語（3文字以上）
+  const english = text.match(/[a-zA-Z]{3,}/gi) || [];
+
+  for (const words of [katakana, kanji, english]) {
+    for (const w of words) {
+      const key = w.toLowerCase();
+      freq.set(key, (freq.get(key) || 0) + 1);
+    }
+  }
+  return freq;
+}
+
+/** ストップワード（一般的すぎて関連度判定に使えない語） */
+const STOP_WORDS = new Set([
+  "こと", "もの", "ため", "よう", "それ", "これ", "ここ", "そこ",
+  "する", "なる", "ある", "いる", "できる", "おすすめ", "ランキング",
+  "まとめ", "比較", "効果", "方法", "使い方", "口コミ", "人気",
+  "the", "and", "for", "that", "this", "with", "from",
+]);
+
+/**
+ * 2記事間の関連度スコアを計算（コサイン類似度ベース）
+ * SEO的に強い内部リンクの条件:
+ *  - トピカルに近い（同じキーワード群を共有）
+ *  - 完全重複ではない（カニバリゼーション回避）
+ */
+function computeRelevanceScore(
+  sourceKeywords: Map<string, number>,
+  targetKeywords: Map<string, number>,
+): { score: number; sharedKeywords: string[] } {
+  const shared: string[] = [];
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  // ストップワード除外した共通キーワードのみ評価
+  const allKeysArr = Array.from(new Set([...Array.from(sourceKeywords.keys()), ...Array.from(targetKeywords.keys())]));
+
+  for (let i = 0; i < allKeysArr.length; i++) {
+    const key = allKeysArr[i];
+    if (STOP_WORDS.has(key)) continue;
+    const a = sourceKeywords.get(key) || 0;
+    const b = targetKeywords.get(key) || 0;
+    if (a > 0 && b > 0) {
+      shared.push(key);
+    }
+    dotProduct += a * b;
+    normA += a * a;
+    normB += b * b;
+  }
+
+  if (normA === 0 || normB === 0) return { score: 0, sharedKeywords: [] };
+
+  const cosine = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+
+  // SEO最適: 類似度0.15〜0.7が理想（近すぎるとカニバリ、遠すぎると無関係）
+  // 0.7超えはペナルティ（カニバリゼーションリスク）
+  let adjustedScore = cosine;
+  if (cosine > 0.7) {
+    adjustedScore = 0.7 - (cosine - 0.7) * 0.5; // カニバリペナルティ
+  }
+
+  return {
+    score: Math.max(0, Math.min(1, adjustedScore)),
+    sharedKeywords: shared.sort((a, b) => {
+      const freqA = (sourceKeywords.get(a) || 0) + (targetKeywords.get(a) || 0);
+      const freqB = (sourceKeywords.get(b) || 0) + (targetKeywords.get(b) || 0);
+      return freqB - freqA;
+    }).slice(0, 10),
+  };
+}
+
+/**
+ * 全記事プールからターゲット記事に最も関連の強い記事をランク付け
+ *
+ * @param targetTitle   リライト対象記事のタイトル
+ * @param targetHtml    リライト対象記事のHTML本文
+ * @param allPosts      WordPressの全公開記事（id, title, link, slug, content）
+ * @param maxResults    返す最大件数（デフォルト8）
+ * @param minScore      最低関連度スコア（デフォルト0.08）
+ */
+export function rankRelatedPosts(
+  targetTitle: string,
+  targetHtml: string,
+  allPosts: { id: number; title: string; link: string; slug: string; content?: string }[],
+  maxResults: number = 8,
+  minScore: number = 0.08,
+): ScoredPost[] {
+  const sourceText = targetTitle + " " + stripHtml(targetHtml);
+  const sourceKw = extractKeywords(sourceText);
+
+  const scored: ScoredPost[] = [];
+
+  for (const post of allPosts) {
+    const postText = post.title + " " + stripHtml(post.content || post.title);
+    const postKw = extractKeywords(postText);
+    const { score, sharedKeywords } = computeRelevanceScore(sourceKw, postKw);
+
+    if (score >= minScore && sharedKeywords.length >= 1) {
+      scored.push({
+        id: post.id,
+        title: post.title,
+        link: post.link,
+        slug: post.slug,
+        score,
+        sharedKeywords,
+      });
+    }
+  }
+
+  // スコア降順 → 上位N件
+  return scored.sort((a, b) => b.score - a.score).slice(0, maxResults);
+}
+
+/**
+ * 関連記事データからClaudeへのコンテキスト文字列を生成
+ */
+export function buildRelatedPostsContext(posts: ScoredPost[]): string {
+  if (posts.length === 0) return "（関連記事なし）";
+  return posts.map((p, i) =>
+    `${i + 1}. 「${p.title}」\n   URL: ${p.link}\n   共通トピック: ${p.sharedKeywords.slice(0, 5).join("・")}\n   関連度: ${(p.score * 100).toFixed(0)}%`
+  ).join("\n");
+}
+
 /**
  * 特定テーマから誘導可能な内部リンクを取得する
  */
