@@ -181,7 +181,7 @@ async function generateYouTubeArticle(
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 6000,
+      max_tokens: 8000,
       stream: true,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -296,6 +296,40 @@ async function generateYouTubeArticle(
     <p style="font-size:11px;color:#999;margin:4px 0 0;">※本記事は上記のYouTube動画の内容を参考に、筆者が独自にまとめたものです。動画の詳細は出典元をご覧ください。</p>
   </div>`;
 
+  // ======== VideoObject + FAQPage スキーマ（構造化データ）========
+  const faqItems = (article.faqSchema || []) as { question: string; answer: string }[];
+  const videoSchema = {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    "name": details.title,
+    "description": details.description?.slice(0, 300) || article.metaDescription || "",
+    "thumbnailUrl": `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    "uploadDate": details.publishedAt || new Date().toISOString(),
+    "contentUrl": videoUrl,
+    "embedUrl": `https://www.youtube.com/embed/${videoId}`,
+    "author": {
+      "@type": "Person",
+      "name": channelName,
+    },
+    ...(details.viewCount ? { "interactionStatistic": {
+      "@type": "InteractionCounter",
+      "interactionType": "https://schema.org/WatchAction",
+      "userInteractionCount": Number(details.viewCount),
+    }} : {}),
+  };
+  const faqSchema = faqItems.length >= 2 ? {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map((f) => ({
+      "@type": "Question",
+      "name": f.question,
+      "acceptedAnswer": { "@type": "Answer", "text": f.answer },
+    })),
+  } : null;
+  const schemaBlock = `\n<script type="application/ld+json">${JSON.stringify(videoSchema)}</script>`
+    + (faqSchema ? `\n<script type="application/ld+json">${JSON.stringify(faqSchema)}</script>` : "");
+  htmlContent += schemaBlock;
+
   // アフィリエイトリンク挿入
   if (rakutenProducts.length > 0) {
     htmlContent = `<div style="font-size:11px;color:#999;margin-bottom:16px;">PR：本記事にはアフィリエイト広告が含まれています</div>\n` + htmlContent;
@@ -312,8 +346,15 @@ async function generateYouTubeArticle(
     </div>`;
   }
 
-  const keywordForSlug = (article.keyword || "")
-    .replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, "-")
+  // keywordRomaji（Claudeが生成したローマ字）を優先、なければkeywordを変換
+  const romajiRaw = (article.keywordRomaji || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  const keywordForSlug = romajiRaw || (article.keyword || "")
+    .replace(/[^a-zA-Z0-9]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 30);
@@ -383,79 +424,166 @@ function extractProductKeyword(title: string, tags: string[]): string {
 function buildYouTubeArticlePrompt(
   context: string,
   productContext: string,
-  videoDetails: { title: string; channelTitle: string },
+  videoDetails: { title: string; channelTitle: string; viewCount?: string; publishedAt?: string },
   geminiUsed: boolean,
   youtubeEmbed: string
 ): string {
   const channelName = videoDetails.channelTitle;
+  const viewCountStr = videoDetails.viewCount
+    ? `（再生回数：${Number(videoDetails.viewCount).toLocaleString()}回）`
+    : "";
+  const publishedStr = videoDetails.publishedAt
+    ? `（公開日：${videoDetails.publishedAt.slice(0, 10)}）`
+    : "";
 
-  return `あなたは美容ブロガー「みお」です。30代の女性で、美容とスキンケアが大好きな等身大のブロガーです。
-
-## 記事の目的
-話題のYouTube動画の内容を紹介し、自分なりの考察を加えた記事を作成してください。
-「この動画を見つけて気になったので、内容をまとめつつ私なりの考えも書いてみました」というスタンスです。
+  return `あなたは美容ブロガー「みお」です。30代・敏感肌で、美容成分やスキンケアを5年以上研究してきた等身大のブロガーです。Googleで上位表示させるための、読者の検索意図に完全一致したSEO記事を書いてください。
 
 ## 参照情報
 ${context}${productContext}
 
-## YouTube動画埋め込みHTML（記事内に必ず配置すること）
-以下のHTMLを記事の導入文の直後（最初のH2の前）に配置してください：
+## YouTube動画埋め込みHTML（必ず配置）
 ${youtubeEmbed}
 
-## 記事構成（HTML形式・3000-4500文字）
-1. 導入文（200文字）: 「最近YouTubeでこんな動画を見つけたんです！」的な自然な書き出し
-2. [YouTube動画埋め込み] ← 上記のHTMLをここに配置
-3. H2: 動画の内容をざっくりまとめると（600文字）: ${geminiUsed ? "Gemini分析結果を自分の言葉で要約" : "動画のタイトル・概要欄の情報をベースに要約"}
-   - H3で2-3個のポイントに分けて解説
-4. H2: 紹介されていたアイテム・成分をチェック（500文字）: 動画で言及された製品や成分の解説
-   ${productContext ? "- 商品プレースホルダーを配置" : ""}
-5. H2: 筆者みおのコメント・考察（500文字）: 動画の内容を受けての自分なりの意見・追加情報
-6. H2: まとめ（200文字）: 動画の良さを伝えつつ、読者へのアクション提案
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SEO戦略（必ず守ること）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## ルール
-- 「〜だと思います」「〜なんですよね」のような親しみやすい口調
-- ${geminiUsed
-    ? `Gemini AIによる動画分析結果を参考にしています。分析結果を自分の言葉で自然にまとめてください
-- 「動画で紹介されていた内容によると」「動画の中で触れられていた」のような表現はOKです`
-    : `動画を直接視聴した情報は参照していません。タイトル・説明文・タグの情報のみを使ってください
-- 「動画タイトルや概要欄の情報によると」「概要欄で紹介されている情報では」と明示してください
-- 「動画で言っていた」「動画で紹介されていた」のような表現は禁止`}
+### 検索意図
+この記事を読む人は「${videoDetails.title}」に関して以下の意図を持っている：
+- 動画を見る前に内容の要点を知りたい
+- 紹介された成分・商品が自分に合うか知りたい
+- ${channelName}様の信頼性・専門性を確認したい
+これらを全部満たす記事を書くこと。
+
+### キーワード配置ルール
+- **冒頭100文字以内**にメインキーワードを必ず含める（Googleが最重視）
+- **H2・H3タグ**には必ず検索キーワードを含める（「〜について」「〜の方法」等ではなくキーワードそのもの）
+- メインキーワードの出現頻度：本文全体の2〜3%（詰め込みすぎ禁止）
+
+### E-E-A-T（経験・専門性・権威性・信頼性）の強化
+- みおの**実体験**を具体的に書く（「私も同じ悩みがあって〜」「実際に使ったことがある〜」）
+- ${channelName}様の**専門性・権威性**を示す情報を必ず1段落書く
+- 成分解説は**作用機序レベル**（「〇〇がコラーゲン産生を促進するため」等）で書く
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 記事構成（HTML・4500〜6000文字）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ① 導入文（150文字以内）
+- **冒頭1文目**にメインキーワードを含める（例：「〇〇について、人気チャンネルの〜」）
+- 「この記事を読むとわかること」を1〜2行で示してから本文へ
+- 口調：「〜なんですよね」「〜気になりますよね？」
+
+### ② 「この記事でわかること」ボックス（Featured Snippet狙い・必須）
+以下のHTMLで箇条書きボックスを作成：
+<div style="background:#f0f9f4;border-left:4px solid #3a8f7a;border-radius:8px;padding:16px 20px;margin:20px 0;">
+  <p style="font-weight:bold;font-size:14px;margin:0 0 8px;color:#3a8f7a;">📌 この記事でわかること</p>
+  <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.9;">
+    <li>動画で紹介された内容のポイント3選</li>
+    <li>紹介成分・商品の効果と選び方</li>
+    <li>${channelName}様のチャンネルの特徴と信頼性</li>
+    <li>みおが実際に試した感想</li>
+  </ul>
+</div>
+※箇条書きの内容は記事の実際の内容に合わせること
+
+### ③ YouTube動画埋め込み
+上記のYouTube埋め込みHTMLをここに配置する
+
+### ④ H2：「${channelName}様とはどんなチャンネル？」（200〜300文字）
+${viewCountStr}${publishedStr}
+- チャンネルの専門ジャンル・視聴者層を書く
+- 「〇〇に詳しい」「〇〇で人気の」等、権威性を示す表現を使う
+- **E-E-A-T強化**：なぜこのチャンネルが信頼できるかを1〜2文で示す
+
+### ⑤ H2：「動画の要点まとめ｜[メインキーワード]について」（600〜800文字）
+${geminiUsed
+  ? "Gemini分析の内容をベースに書く。「動画で解説されていたのは〜」「動画内では〜と紹介されていました」と書いてOK"
+  : "タイトル・概要欄の情報のみ使用。「概要欄の情報によると〜」「動画タイトルから読み取れる〜」と明示すること"}
+- **番号付きリスト（ol）で3〜5つのポイント**を整理 → Featured Snippetに最適
+- 各ポイントはH3で見出しをつけ、100〜150文字で解説
+- H3には必ずキーワード（成分名・商品名・悩み名）を含める
+
+### ⑥ H2：「[成分名/商品名]の効果・成分解説」（700〜900文字）
+${productContext ? productContext : "動画で言及された成分や商品について深掘り解説"}
+- **作用機序を具体的に**書く（「〇〇酸が〇〇酵素を阻害することで〜」等）
+- 肌悩み別（乾燥・毛穴・シミ・ニキビ等）の効果を整理
+- 比較観点（「同成分の他製品との違いは〜」）があるとベター
+${productContext ? "- 商品プレースホルダーを適切な位置に配置" : ""}
+
+### ⑦ H2：「みおの実体験レビュー｜実際に[成分/商品]を使ってみた感想」（500〜700文字）
+- **具体的な使用シーン・期間・変化**を書く（「朝晩2週間使ったら〜」等）
+- 良かった点だけでなく**正直な注意点**も1つ書く（信頼性向上）
+- 肌タイプ別（乾燥肌・混合肌・敏感肌）の向き不向きを示す
+- 黄色マーカーを2〜3か所使う：<span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要な結論・ポイント</span>
+
+### ⑧ H2：「よくある質問｜[メインキーワード]について」（FAQ・PAA狙い）
+Googleの「他のユーザーの質問」（PAA）に掲載されやすい形式で書く：
+- Q: [製品/成分]は毎日使っても大丈夫ですか？
+- Q: [製品/成分]の効果が出るまでどれくらいかかりますか？
+- Q: 敏感肌でも[製品/成分]は使えますか？
+→ 各答えは**3〜4文で完結**させる（Googleが引用しやすいよう簡潔に）
+
+### ⑨ H2：「まとめ｜[メインキーワード]を試す前に知っておきたいこと」（200文字）
+- 記事全体の結論を1段落で
+- 「動画を見て気になった方は〜」という自然なCTAで締める
+- 黄色マーカー1か所
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## タイトル・メタの書き方
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### タイトル（titleフィールド）55〜60文字
+形式：「[メインキーワード]を[チャンネル名]が徹底解説！動画内容まとめ・成分解析レビュー」
+例：「ビタミンC美容液の使い方をプロが徹底解説！動画内容まとめ・おすすめ商品レビュー」
+- **数字を入れると良い**（「〇選」「〇つのポイント」）
+- 検索ボリュームの高い言葉（「徹底解説」「おすすめ」「口コミ」等）を含める
+
+### metaDescription 120〜160文字
+形式：「[キーワード]について[チャンネル名]様のYouTube動画をもとにまとめました。[ポイント]を解説。30代ブロガーみおの実体験レビューもあり。」
+- 記事の**具体的な内容**を書く（「〇〇について解説」でなく「〇〇の3つの使い方を解説」）
+- 感情を動かす言葉（「気になる」「実際に試した」「正直レビュー」）を入れる
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## タグ選択（許可リストから2〜4個）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+スキンケア / 美白 / シミ対策 / 毛穴ケア / ニキビ / エイジングケア / レチノール / ビタミンC / ナイアシンアミド / セラミド / トラネキサム酸 / 医療脱毛 / 美容クリニック / ハイフ / ボトックス / ダーマペン / ピーリング / シャンプー / ヘアケア / ヘアオイル / 白髪ケア / プチプラ / デパコス / ドラッグストア / 30代 / 40代 / YouTube動画 / 美容YouTube / 動画紹介 / 美容系YouTuber
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## ルール・禁止事項
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- YouTubeチャンネル名は必ず「${channelName}様」と敬称
 - 原文をそのままコピーしない。必ず自分の言葉で要約・書き直す
-- YouTubeチャンネル名は必ず「${channelName}様」と敬称をつけること
+- 黄色マーカーは合計3〜5か所（見出し・リンクには使わない）
+- 記事末尾の「参考情報」セクションはコード側で自動挿入 → 本文に書かない
+- ${geminiUsed
+    ? "「動画で紹介されていた」「動画内では」という表現はOK"
+    : "「動画で言っていた」「動画で紹介されていた」は禁止。必ず「概要欄の情報によると」と書く"}
 
 ${COMPLIANCE_BLOCK}
 
 ${REFERENCES_BLOCK}
 
-## 出典表記（必須）
-- 出典元メディア名: ${channelName}様（YouTube）
-- 記事末尾の「参考情報」セクションはコード側で自動挿入するため、記事本文には不要です
-
-## 重要：黄色マーカー装飾（必ず実行すること）
-htmlContent内で読者にとって特に重要な箇所に、以下のHTMLタグで黄色マーカーを引いてください：
-<span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要なテキスト</span>
-- 1記事あたり3〜5箇所に使用
-- 結論・注意点・ポイントなど重要な短いフレーズに使う
-- 見出し（h2/h3）やリンクには使わない
-
-## タグ選択（必須）
-以下の許可リストから記事に合うタグを2〜4個選んでください（リスト外は使用不可）：
-スキンケア / 美白 / シミ対策 / 毛穴ケア / ニキビ / エイジングケア / レチノール / ビタミンC / ナイアシンアミド / セラミド / トラネキサム酸 / 医療脱毛 / 美容クリニック / ハイフ / ボトックス / ダーマペン / ピーリング / シャンプー / ヘアケア / ヘアオイル / 白髪ケア / プチプラ / デパコス / ドラッグストア / 30代 / 40代 / YouTube動画 / 美容YouTube / 動画紹介 / 美容系YouTuber
-
-## JSON出力
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## JSON出力（必ずこの形式で）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 \`\`\`json
 {
-  "htmlContent": "HTML形式の記事本文（YouTube埋め込み + 黄色マーカー3〜5箇所含む）",
-  "title": "SEOタイトル（60文字以内）",
-  "metaDescription": "meta description（120-160文字）",
-  "keyword": "メインキーワード（記号・スペースなし）",
-  "tags": ["上記許可リストから2〜4個"],
-  "faqSchema": [{"question":"Q","answer":"A"},{"question":"Q","answer":"A"}]
+  "htmlContent": "HTML形式の記事本文（①〜⑨全セクション含む・黄色マーカー3〜5か所）",
+  "title": "SEOタイトル（55〜60文字・数字含む）",
+  "metaDescription": "meta description（120〜160文字・具体的内容含む）",
+  "keyword": "メインキーワード（英数字・日本語のみ・記号・スペースなし）",
+  "keywordRomaji": "メインキーワードのローマ字（半角英数ハイフンのみ・例: vitamin-c-bijin-eki）",
+  "tags": ["許可リストから2〜4個"],
+  "faqSchema": [
+    {"question": "PAA狙いの具体的な質問", "answer": "3〜4文の完結した回答"},
+    {"question": "PAA狙いの具体的な質問", "answer": "3〜4文の完結した回答"},
+    {"question": "PAA狙いの具体的な質問", "answer": "3〜4文の完結した回答"}
+  ]
 }
 \`\`\`
 
-## FAQ（よくある質問）の禁止事項
-- 使用感を問う質問（「使い心地は？」「効果はありましたか？」）は入れない
+### FAQ禁止事項
+- 「使い心地は？」「効果はありましたか？」等の主観的質問は入れない
 - 医学的効果を断言する回答は禁止
-- 捏造した数値は禁止`;
+- 捏造した数値・研究は禁止`;
 }
