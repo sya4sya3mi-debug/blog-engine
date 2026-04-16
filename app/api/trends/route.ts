@@ -3,7 +3,8 @@
 // POST: 手動トレンド収集実行（ハートビート方式）
 // ==========================================
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 import { getConfig } from "@/lib/config";
 import { collectBeautyTrends } from "@/lib/trend-collector";

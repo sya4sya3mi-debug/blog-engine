@@ -1798,7 +1798,7 @@ export default function Dashboard() {
                               <button
                                 onClick={() => addProductFromRakuten(product)}
                                 disabled={products.some((p) => p.name === product.itemName)}
-                                style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: products.some((p) => p.name === product.itemName) ? "#1A1A28" : C.accent, color: products.some((p) => p.name === product.itemName) ? C.textMuted : "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                                style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: products.some((p) => p.name === product.itemName) ? C.borderLight : C.accent, color: products.some((p) => p.name === product.itemName) ? C.textMuted : "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
                               >
                                 {products.some((p) => p.name === product.itemName) ? "追加済" : "記事に追加"}
                               </button>
@@ -2218,11 +2218,11 @@ export default function Dashboard() {
 
                 {rakutenResults.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8, padding: "6px 10px", background: "#1A1A28", borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8, padding: "6px 10px", background: C.border, borderRadius: 6 }}>
                       収益スコア順 | 料率×送料無料×ポイント倍率×あす楽×セール×評価 を総合評価
                     </div>
                     {rakutenResults.map((product, i) => (
-                      <div key={i} style={{ padding: isMobile ? "10px" : "10px 14px", background: "#14141F", borderRadius: 10, border: i < 3 ? `1px solid ${i === 0 ? "#FFD70044" : i === 1 ? "#C0C0C044" : "#CD7F3244"}` : "none" }}>
+                      <div key={i} style={{ padding: isMobile ? "10px" : "10px 14px", background: C.bgCard, borderRadius: 10, border: i < 3 ? `1px solid ${i === 0 ? "#FFD70044" : i === 1 ? "#C0C0C044" : "#CD7F3244"}` : "none" }}>
                         <div style={{ display: "flex", gap: isMobile ? 8 : 12, alignItems: "flex-start" }}>
                           <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0, background: i === 0 ? "#FFD700" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : C.borderLight, color: i < 3 ? "#000" : C.textDim }}>
                             {i + 1}
@@ -2233,7 +2233,7 @@ export default function Dashboard() {
                               {product.itemName}
                             </div>
                             <div style={{ fontSize: isMobile ? 11 : 12, color: C.textDim, marginTop: 2 }}>
-                              <span style={{ color: "#bf0000", fontWeight: 700 }}>¥{product.itemPrice?.toLocaleString()}</span>
+                              <span style={{ color: C.orange, fontWeight: 700 }}>¥{product.itemPrice?.toLocaleString()}</span>
                               <span style={{ marginLeft: 6, fontSize: 10 }}>{product.shopName}</span>
                               {product.reviewCount > 0 && <span style={{ marginLeft: 6, fontSize: 10 }}>★{product.reviewAverage} ({product.reviewCount})</span>}
                             </div>
@@ -2274,7 +2274,7 @@ export default function Dashboard() {
                               savePartners([...partners, newPartner]);
                             }}
                             disabled={partners.some((p) => product.affiliateUrl && (p.html || "").includes(product.affiliateUrl))}
-                            style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: partners.some((p) => product.affiliateUrl && (p.html || "").includes(product.affiliateUrl)) ? "#1A1A28" : C.green, color: partners.some((p) => product.affiliateUrl && (p.html || "").includes(product.affiliateUrl)) ? C.textMuted : "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", flex: isMobile ? 1 : undefined }}
+                            style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: partners.some((p) => product.affiliateUrl && (p.html || "").includes(product.affiliateUrl)) ? C.borderLight : C.green, color: partners.some((p) => product.affiliateUrl && (p.html || "").includes(product.affiliateUrl)) ? C.textMuted : "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", flex: isMobile ? 1 : undefined }}
                           >
                             {partners.some((p) => product.affiliateUrl && (p.html || "").includes(product.affiliateUrl)) ? "登録済" : "DB登録"}
                           </button>
@@ -2285,7 +2285,7 @@ export default function Dashboard() {
                               setActiveTab("generate");
                             }}
                             disabled={products.some((p) => p.name === product.itemName)}
-                            style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: products.some((p) => p.name === product.itemName) ? "#1A1A28" : C.accent, color: products.some((p) => p.name === product.itemName) ? C.textMuted : "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", flex: isMobile ? 1 : undefined }}
+                            style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: products.some((p) => p.name === product.itemName) ? C.borderLight : C.accent, color: products.some((p) => p.name === product.itemName) ? C.textMuted : "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", flex: isMobile ? 1 : undefined }}
                           >
                             {products.some((p) => p.name === product.itemName) ? "追加済" : "記事に追加"}
                           </button>
