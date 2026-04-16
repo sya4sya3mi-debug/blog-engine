@@ -258,6 +258,8 @@ export function getConfig() {
     // Trend collection
     youtubeApiKey: getEnv("YOUTUBE_API_KEY", ""),
     ncbiApiKey: getEnv("NCBI_API_KEY", ""),
+    // Gemini (YouTube動画分析)
+    geminiApiKey: getEnv("GEMINI_API_KEY", ""),
     // Fact-check
     factCheckEnabled: getEnv("FACT_CHECK_ENABLED", "true") === "true",
   };

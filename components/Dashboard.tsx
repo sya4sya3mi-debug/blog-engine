@@ -178,7 +178,10 @@ export default function Dashboard() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   // Generate state
-  const [genMode, setGenMode] = useState<"theme" | "product" | "category" | "personal-review" | "paste">("category");
+  const [genMode, setGenMode] = useState<"theme" | "product" | "category" | "personal-review" | "paste" | "youtube-video">("category");
+  // YouTube動画記事モード用state
+  const [ytVideoUrl, setYtVideoUrl] = useState("");
+  const [ytAnalyzing, setYtAnalyzing] = useState(false);
   // 本人使用投稿用state
   const [reviewProductName, setReviewProductName] = useState("");
   const [reviewRating, setReviewRating] = useState(4);
@@ -461,6 +464,47 @@ export default function Dashboard() {
         setPreviewItem(pasteItem);
         setGenerating(false);
         runFactCheck(pasteData.article);
+        return;
+      }
+      if (genMode === "youtube-video") {
+        // YouTube動画記事モード（Gemini分析 → Claude記事生成）
+        const videoMatch = ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/);
+        if (!videoMatch) {
+          setGenResult({ ok: false, error: "有効なYouTube URLを入力してください" });
+          setGenerating(false);
+          return;
+        }
+        console.log("[YT-Video] API呼び出し開始:", ytVideoUrl);
+        const pwd = getPwd();
+        const ytController = new AbortController();
+        const ytTimeoutId = setTimeout(() => ytController.abort(), 240000); // Gemini分析含むため4分
+        const ytRes = await fetch("/api/youtube-article", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${pwd}` },
+          body: JSON.stringify({ videoUrl: ytVideoUrl }),
+          signal: ytController.signal,
+        });
+        clearTimeout(ytTimeoutId);
+        const ytRaw = await ytRes.text();
+        const ytJsonMatch = ytRaw.trim().match(/\{[\s\S]*\}$/);
+        if (!ytJsonMatch) throw new Error("YouTube動画記事の生成に失敗しました");
+        const ytData = JSON.parse(ytJsonMatch[0]);
+        if (!ytData.success) throw new Error(ytData.error || "生成エラー");
+        const ytItem: HistoryItem = {
+          id: Date.now(),
+          title: ytData.article.title,
+          keyword: ytData.article.keyword,
+          themeLabel: "YouTube動画記事" + (ytData.article.geminiAnalysis ? "(Gemini分析)" : ""),
+          mode: "product",
+          htmlContent: ytData.article.htmlContent,
+          metaDescription: ytData.article.metaDescription,
+          createdAt: new Date().toLocaleString("ja-JP"),
+        };
+        setHistory((prev) => [ytItem, ...prev]);
+        setGenResult({ ok: true, title: ytData.article.title, articleData: ytData.article, pendingPublish: true });
+        setPreviewItem(ytItem);
+        setGenerating(false);
+        runFactCheck(ytData.article);
         return;
       }
       if (genMode === "category") {
@@ -1095,6 +1139,7 @@ export default function Dashboard() {
                   { id: "product" as const, label: "商品指定", desc: "紹介したい商品を直接入力" },
                   { id: "theme" as const, label: "テーマ指定", desc: "サブテーマ＆キーワードから生成" },
                     { id: "paste" as const, label: "テキスト貼り付け", desc: "他社AIの文章をそのまま記事化" },
+                    { id: "youtube-video" as const, label: "YouTube動画記事", desc: "Gemini AIで動画を分析して記事化" },
                 ] as const).map((m) => (
                   <button
                     key={m.id}
@@ -1638,6 +1683,31 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </>
+                ) : genMode === "youtube-video" ? (
+                  <>
+                    {/* YouTube動画記事モード */}
+                    <div style={{ marginBottom: 16, padding: "14px 16px", background: `${C.accent}11`, borderRadius: 10, border: `1px solid ${C.accent}33` }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.accent, marginBottom: 4 }}>Gemini AIで動画を分析して記事を作成</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
+                        YouTube動画のURLを入力すると、Gemini AIが動画の映像・音声を分析し、内容を要約。その分析結果をもとにClaude AIが記事を自動生成します。
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 12, color: C.textDim, display: "block", marginBottom: 6, fontWeight: 600 }}>YouTube動画URL <span style={{ color: C.red }}>*</span></label>
+                      <input
+                        value={ytVideoUrl}
+                        onChange={(e) => setYtVideoUrl(e.target.value)}
+                        placeholder="https://www.youtube.com/watch?v=... または https://youtu.be/..."
+                        style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1.5px solid ${ytVideoUrl && !ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/) ? C.red : C.borderLight}`, background: "#14141F", color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                      />
+                      {ytVideoUrl && !ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/) && (
+                        <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>有効なYouTube URLを入力してください</div>
+                      )}
+                      {ytVideoUrl && ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/) && (
+                        <div style={{ fontSize: 11, color: C.green, marginTop: 4 }}>URL OK</div>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <>
                     {/* 比較モードトグル */}
@@ -1864,7 +1934,7 @@ export default function Dashboard() {
                 {/* Generate button */}
                 <button
                   onClick={handleGenerate}
-                  disabled={generating || (genMode === "product" && products.every((p) => !p.name.trim())) || (genMode === "paste" && (!pasteTitle.trim() || !pasteHtml.trim()))}
+                  disabled={generating || (genMode === "product" && products.every((p) => !p.name.trim())) || (genMode === "paste" && (!pasteTitle.trim() || !pasteHtml.trim())) || (genMode === "youtube-video" && !ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/))}
                   style={{
                     width: "100%",
                     background: generating ? "#1A1A28" : `linear-gradient(135deg,${C.accent},${C.green})`,
@@ -2703,18 +2773,60 @@ export default function Dashboard() {
                       />
                     </div>
 
-                    <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button
+                          onClick={() => setTrendModalTarget(null)}
+                          style={{ flex: 1, padding: 14, borderRadius: 10, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          onClick={() => useTrendForArticle(trendModalTarget, trendExtraText)}
+                          style={{ flex: 2, padding: 14, borderRadius: 10, border: "none", background: `linear-gradient(135deg,${C.accent},${C.green})`, color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
+                        >
+                          {trendExtraText.trim() ? "追加情報付きで記事を生成" : "そのまま記事を生成"}
+                        </button>
+                      </div>
                       <button
-                        onClick={() => setTrendModalTarget(null)}
-                        style={{ flex: 1, padding: 14, borderRadius: 10, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+                        onClick={async () => {
+                          setTrendModalTarget(null);
+                          setTrendGenerating(trendModalTarget.id);
+                          try {
+                            const pwd = getPwd();
+                            const res = await fetch("/api/youtube-article", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${pwd}` },
+                              body: JSON.stringify({ trendData: trendModalTarget }),
+                              signal: (() => { const c = new AbortController(); setTimeout(() => c.abort(), 240000); return c.signal; })(),
+                            });
+                            const rawText = await res.text();
+                            const jsonMatch = rawText.trim().match(/\{[\s\S]*\}$/);
+                            if (!jsonMatch) throw new Error("記事生成に失敗");
+                            const data = JSON.parse(jsonMatch[0]);
+                            if (!data.success) throw new Error(data.error || "生成エラー");
+                            const historyItem: HistoryItem = {
+                              id: Date.now(),
+                              title: data.article.title,
+                              keyword: data.article.keyword,
+                              themeLabel: "YouTube動画記事(Gemini分析)",
+                              mode: "product",
+                              htmlContent: data.article.htmlContent,
+                              metaDescription: data.article.metaDescription,
+                              createdAt: new Date().toISOString(),
+                            };
+                            setHistory((prev) => [historyItem, ...prev]);
+                            setPreviewItem(historyItem);
+                            setGenResult({ pendingPublish: true, articleData: { title: data.article.title, seoTitle: data.article.title, metaDescription: data.article.metaDescription, htmlContent: data.article.htmlContent, keyword: data.article.keyword, themeLabel: "YouTube動画記事(Gemini分析)", slug: data.article.slug, focusKeyword: data.article.keyword, tags: data.article.tags || [], faqSchema: data.article.faqSchema || [], products: [] }, ok: true, title: data.article.title });
+                          } catch (e: any) {
+                            alert("Gemini分析エラー: " + e.message);
+                          } finally {
+                            setTrendGenerating(null);
+                          }
+                        }}
+                        style={{ width: "100%", padding: 14, borderRadius: 10, border: `1.5px solid ${C.accent}`, background: `${C.accent}11`, color: C.accent, fontSize: 14, fontWeight: 800, cursor: "pointer" }}
                       >
-                        キャンセル
-                      </button>
-                      <button
-                        onClick={() => useTrendForArticle(trendModalTarget, trendExtraText)}
-                        style={{ flex: 2, padding: 14, borderRadius: 10, border: "none", background: `linear-gradient(135deg,${C.accent},${C.green})`, color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
-                      >
-                        {trendExtraText.trim() ? "追加情報付きで記事を生成" : "そのまま記事を生成"}
+                        Gemini AIで動画分析して記事を生成
                       </button>
                     </div>
                   </div>
