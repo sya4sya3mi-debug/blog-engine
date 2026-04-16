@@ -37,4 +37,9 @@ export const ALLOWED_TAGS: string[] = [
   // ターゲット
   "30代",
   "40代",
+  // YouTube・動画系
+  "YouTube動画",
+  "美容YouTube",
+  "動画紹介",
+  "美容系YouTuber",
 ];
