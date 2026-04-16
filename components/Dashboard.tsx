@@ -3249,7 +3249,7 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
 
   // 選択・設定
   const [selectedPost, setSelectedPost] = useState<typeof posts[0] | null>(null);
-  const [mode, setMode] = useState<"seo" | "add-products" | "full" | "internal-links">("seo");
+  const [mode, setMode] = useState<"seo" | "add-products" | "full" | "internal-links" | "youtube-seo">("seo");
   const [keyword, setKeyword] = useState("");
   const [themeLabel, setThemeLabel] = useState("");
   const [productsText, setProductsText] = useState("");
@@ -3358,11 +3358,12 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
     }
   };
 
-  const modeLabels: Record<string, { label: string; desc: string }> = {
+  const modeLabels: Record<string, { label: string; desc: string; badge?: string }> = {
+    "youtube-seo": { label: "YouTube記事SEO完全リライト", desc: "旧構成のYouTube紹介記事を9セクション制・Featured Snippet・VideoObjectスキーマ対応に全面刷新", badge: "推奨" },
     seo: { label: "SEO改善", desc: "日付更新・見出し最適化・内部リンク追加など。内容は変えない" },
+    full: { label: "総合改善", desc: "SEO + 文章の質向上 + 商品追加。赤ペン添削レベルの改善" },
     "internal-links": { label: "内部リンク強化", desc: "関連度分析に基づく内部リンク最適配置。本文は変えずSEO強化" },
     "add-products": { label: "商品追加", desc: "本文はそのまま、アフィリエイト商品セクションだけ追加" },
-    full: { label: "総合改善", desc: "SEO + 文章の質向上 + 商品追加。赤ペン添削レベルの改善" },
   };
 
   return (
@@ -3427,15 +3428,21 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 13, fontWeight: 700, display: "block", marginBottom: 8 }}>リライトモード</label>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(["seo", "internal-links", "add-products", "full"] as const).map((m) => (
-                <label key={m} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, border: `1px solid ${mode === m ? C.accent : C.border}`, cursor: "pointer", background: mode === m ? `${C.accent}10` : "transparent" }}>
-                  <input type="radio" name="rewrite-mode" checked={mode === m} onChange={() => setMode(m)} style={{ marginTop: 2 }} />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{modeLabels[m].label}</div>
-                    <div style={{ fontSize: 11, color: C.textMuted }}>{modeLabels[m].desc}</div>
-                  </div>
-                </label>
-              ))}
+              {(["youtube-seo", "seo", "full", "internal-links", "add-products"] as const).map((m) => {
+                const ml = modeLabels[m];
+                return (
+                  <label key={m} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, border: `1px solid ${mode === m ? C.accent : m === "youtube-seo" ? C.green : C.border}`, cursor: "pointer", background: mode === m ? `${C.accent}10` : m === "youtube-seo" ? `${C.green}08` : "transparent" }}>
+                    <input type="radio" name="rewrite-mode" checked={mode === m} onChange={() => setMode(m)} style={{ marginTop: 2 }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                        {ml.label}
+                        {ml.badge && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 10, background: C.green, color: "#000", fontWeight: 800 }}>{ml.badge}</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{ml.desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
