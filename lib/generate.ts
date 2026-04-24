@@ -6,6 +6,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { SubTheme, TargetAge, THEME_TIER_MAP } from "./config";
 import { autoFixCompliance } from "./compliance";
+import { getIngredientCandidate, type IngredientCandidate } from "./ingredient-data";
 
 // 日本語キーワード→英語スラッグ変換マップ
 const JA_TO_EN_SLUG: Record<string, string> = {
@@ -87,12 +88,144 @@ export interface GeneratedArticle {
   tags: string[];
   faqSchema: { question: string; answer: string }[];
   products: { name: string; description?: string; brand?: string; price?: number; url?: string; rating?: number; reviewCount?: number }[];
+  seoNotes?: {
+    primaryKeyword?: string;
+    secondaryKeywords?: string[];
+    searchIntent?: string[];
+    titleAngle?: string;
+    latentNeeds?: string[];
+  };
+  internalLinks?: { anchorText: string; targetHint: string; placementReason: string; linkRole?: "parent" | "child" | "money" | "related" }[];
+  externalSources?: { label: string; url: string; sourceType: string; citationReason: string }[];
+  auditSummary?: { score: number; topRisks: string[]; nextFixes: string[] };
+  imageSeo?: { position: string; imageIntent: string; fileNameHint: string; alt: string }[];
   eyecatchUrl?: string;  // アイキャッチ画像URL（生成後に設定）
 }
 
 export type { TargetAge } from "./config";
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+export const STRICT_REFERENCES_BLOCK = `
+## 参考文献・出典の記載（SEO/E-E-A-T強化・必須）
+- 新たに追加した事実・数値・成分作用・施術説明・ガイドライン言及には、必ず対応する外部リンクURLを付けること
+- 参考文献・公的情報・研究・公式サイトを引用する場合は、必ず外部リンクURLを本文または参考文献欄に含めること。URLが不明な出典は記載禁止
+- 組織名だけの疑似出典は禁止。出典を書くなら該当URLまで明示する
+- 参考文献は最低2件、最大5件。一次情報、公的機関、学会、論文、公式サイトを優先する
+- 参考文献リンクは編集目的の外部リンクとして rel="noopener noreferrer nofollow" を付ける
+- アフィリエイトリンクにのみ rel="nofollow sponsored" を使う。参考文献リンクに sponsored は付けない
+- 架空の論文名・URL・著者名・公開年は絶対に記載しない
+- URLを確認できない参考文献は件数合わせで入れない
+
+### 参考文献セクションのHTML形式
+\`\`\`html
+<div class="references">
+  <p class="references__title">参考文献</p>
+  <ul class="references__list">
+    <li><a href="https://example.com/source-1" rel="noopener noreferrer nofollow" target="_blank">出典1の名称</a> - この出典を引用した理由</li>
+    <li><a href="https://example.com/source-2" rel="noopener noreferrer nofollow" target="_blank">出典2の名称</a> - この出典を引用した理由</li>
+  </ul>
+</div>
+\`\`\`
+`;
+
+export const ARTICLE_GENERATION_SEO_ADDON_BLOCK = `
+## 共通SEO設計（全記事生成で必須）
+- 本文を書く前に検索意図を Know / Compare / Do / Trust の4視点で整理し、最優先意図を1つ決めること
+- 主キーワード1個、補助キーワード3〜6個、共起語6〜12個を想定し、タイトル・導入文・H2・FAQ・まとめで役割を分けて自然に反映すること
+- 読者の潜在ニーズを2〜5個推測し、比較・注意点・FAQ・次行動の案内で補完すること
+- H2ごとに役割を分け、結論、理由、比較、注意点、向いている人、FAQ、次に読む記事の流れを整理すること
+- 内部リンクは件数稼ぎではなく、親記事 / 子記事 / 収益記事の役割を意識して配置すること
+- 参考文献・公的情報・研究・公式サイトを使う場合は、必ず実URL付きで記載すること。URL不明の出典は書かないこと
+
+## 追加JSONフィールド（既存JSON契約は維持したまま、可能なら追加）
+\`\`\`json
+{
+  "seoNotes": {
+    "primaryKeyword": "主キーワード",
+    "secondaryKeywords": ["補助キーワード1", "補助キーワード2"],
+    "searchIntent": ["Know", "Compare"],
+    "titleAngle": "タイトルの訴求角度",
+    "latentNeeds": ["検索者の潜在ニーズ1", "検索者の潜在ニーズ2"]
+  },
+  "internalLinks": [
+    {
+      "anchorText": "アンカーテキスト",
+      "targetHint": "リンク先記事タイトルやテーマ",
+      "placementReason": "その位置に置く理由",
+      "linkRole": "parent"
+    }
+  ],
+  "externalSources": [
+    {
+      "label": "出典名",
+      "url": "https://example.com",
+      "sourceType": "official",
+      "citationReason": "どの主張の根拠に使ったか"
+    }
+  ],
+  "imageSeo": [
+    {
+      "position": "導入直後",
+      "imageIntent": "比較表",
+      "fileNameHint": "vitamin-c-comparison-table",
+      "alt": "ビタミンC系成分の違いをまとめた比較表"
+    }
+  ]
+}
+\`\`\`
+- 追加した optional fields は、本文で実際に採用した内容に合わせて記載すること
+- imageSeo は画像を入れるべき位置がある場合だけ記載すればよい
+`;
+
+const SEO_REWRITE_SHARED_BLOCK = `
+## SEO設計プロセス（全SEO系モード共通・必須）
+- まず検索意図を Know / Compare / Do / Trust の4視点で整理し、この検索で何を先に答えるべきかを明確にする
+- 主キーワード1個、補助キーワード3〜6個、共起語6〜12個を決め、それぞれの役割を分けて自然に配置する
+- タイトル、導入文、H2、FAQ、まとめで同じキーワードを機械的に繰り返さず、役割ごとに言い換える
+- 各H2は主キーワードの別角度を担当させ、見出し重複を避ける
+- 上位表示目的の編集では「読者が次に知りたいこと」をH2単位で補完し、情報欠落を埋める
+- 体験談・事実・出典・比較・FAQを混同しない。主張には根拠、比較には基準、注意点には条件を置く
+- タイトルはCTR狙いだけでなく、検索意図との一致を最優先すること
+- FAQは本文の焼き直しではなく、PAAを狙う補完質問にすること
+- 内部リンクは数を増やすことが目的ではなく、検索ユーザーの次の疑問を解決する導線として配置すること
+`;
+
+const SEO_REWRITE_JSON_BLOCK = `
+## JSON出力（これだけ出力。他のテキスト不要）
+\`\`\`json
+{
+  "title": "SEO最適化タイトル",
+  "metaDescription": "120〜160文字程度のメタディスクリプション",
+  "htmlContent": "完成したHTML本文",
+  "slug": "english-seo-slug",
+  "focusKeyword": "メインキーワード",
+  "tags": ["タグ1", "タグ2", "タグ3"],
+  "faq": [
+    { "question": "質問1", "answer": "回答1" },
+    { "question": "質問2", "answer": "回答2" },
+    { "question": "質問3", "answer": "回答3" }
+  ],
+  "products": [
+    { "name": "商品名", "description": "特徴", "brand": "ブランド", "price": 3980, "rating": 4.5, "reviewCount": 100 }
+  ],
+  "seoNotes": {
+    "primaryKeyword": "主キーワード",
+    "secondaryKeywords": ["補助キーワード1", "補助キーワード2"],
+    "searchIntent": ["Know", "Compare"],
+    "titleAngle": "タイトルの訴求角度"
+  },
+  "internalLinks": [
+    { "anchorText": "アンカーテキスト", "targetHint": "リンク先記事タイトルやテーマ", "placementReason": "この位置に置く理由" }
+  ],
+  "externalSources": [
+    { "label": "出典名", "url": "https://example.com", "sourceType": "official", "citationReason": "何の根拠として使ったか" }
+  ]
+}
+\`\`\`
+- htmlContentは記事全文を最後まで省略せず出力する
+- seoNotes / internalLinks / externalSources は、本文で実際に採用した内容に合わせて記載する
+`;
 
 // ----- 動的な日付ラベル生成（JST基準） -----
 function getJstNow(): Date {
@@ -1031,6 +1164,16 @@ interface ParsedArticle {
   tags?: string[];
   faq?: { question: string; answer: string }[];
   products?: ParsedProduct[];
+  seoNotes?: {
+    primaryKeyword?: string;
+    secondaryKeywords?: string[];
+    searchIntent?: string[];
+    titleAngle?: string;
+    latentNeeds?: string[];
+  };
+  internalLinks?: { anchorText?: string; targetHint?: string; placementReason?: string; linkRole?: string }[];
+  externalSources?: { label?: string; url?: string; sourceType?: string; citationReason?: string }[];
+  imageSeo?: { position?: string; imageIntent?: string; fileNameHint?: string; alt?: string }[];
 }
 
 function extractJSON(text: string): ParsedArticle {
@@ -1155,23 +1298,35 @@ function repairTruncatedJSON(json: string): string {
 
 async function callClaude(apiKey: string, prompt: string, maxTokens?: number) {
   const client = new Anthropic({ apiKey });
+  const effectiveMaxTokens = maxTokens || 16000;
 
   // ストリーミングで受信（Vercel Hobby の関数タイムアウト対策）
   const stream = client.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: maxTokens || 8096,
+    model: "claude-haiku-4-5",
+    max_tokens: effectiveMaxTokens,
     messages: [{ role: "user", content: prompt }],
   });
 
   let text = "";
+  let stopReason: string | null = null;
   for await (const event of stream) {
     if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
       text += event.delta.text;
+    } else if (event.type === "message_delta" && event.delta.stop_reason) {
+      stopReason = event.delta.stop_reason;
     }
   }
 
   if (!text) {
     throw new Error("Claude APIから空のレスポンスが返されました");
+  }
+
+  // max_tokens で途中切断された場合は警告（本文が途中で切れる原因）
+  if (stopReason === "max_tokens") {
+    console.warn(
+      `[callClaude] Response truncated by max_tokens (limit=${effectiveMaxTokens}, got=${text.length} chars). ` +
+      `Article may be cut off mid-sentence. Consider raising max_tokens for this call.`
+    );
   }
 
   return text;
@@ -1282,6 +1437,73 @@ function buildGeneratedArticle(parsed: ParsedArticle, keyword: string, themeLabe
   const products = parsed.products || [];
   const focusKeyword = parsed.focusKeyword || keyword;
   const seoTitle = buildSeoTitle(parsed.title);
+  const seoNotes = parsed.seoNotes
+    ? {
+        primaryKeyword: parsed.seoNotes.primaryKeyword || focusKeyword,
+        secondaryKeywords: Array.isArray(parsed.seoNotes.secondaryKeywords)
+          ? parsed.seoNotes.secondaryKeywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+          : [],
+        searchIntent: Array.isArray(parsed.seoNotes.searchIntent)
+          ? parsed.seoNotes.searchIntent.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+          : [],
+        titleAngle: parsed.seoNotes.titleAngle || "",
+        latentNeeds: Array.isArray(parsed.seoNotes.latentNeeds)
+          ? parsed.seoNotes.latentNeeds.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+          : [],
+      }
+    : undefined;
+  const normalizeLinkRole = (value?: string): "parent" | "child" | "money" | "related" | undefined => {
+    if (value === "parent" || value === "child" || value === "money" || value === "related") {
+      return value;
+    }
+    return undefined;
+  };
+  const internalLinks = Array.isArray(parsed.internalLinks)
+    ? parsed.internalLinks
+        .filter((link) => link && typeof link.anchorText === "string" && typeof link.targetHint === "string" && typeof link.placementReason === "string")
+        .map((link) => ({
+          anchorText: link.anchorText!.trim(),
+          targetHint: link.targetHint!.trim(),
+          placementReason: link.placementReason!.trim(),
+          linkRole: normalizeLinkRole(link.linkRole),
+        }))
+        .filter((link) => link.anchorText && link.targetHint && link.placementReason)
+    : [];
+  const externalSources = Array.isArray(parsed.externalSources)
+    ? parsed.externalSources
+        .filter((source) =>
+          source &&
+          typeof source.label === "string" &&
+          typeof source.url === "string" &&
+          /^https?:\/\//i.test(source.url) &&
+          typeof source.sourceType === "string" &&
+          typeof source.citationReason === "string",
+        )
+        .map((source) => ({
+          label: source.label!.trim(),
+          url: source.url!.trim(),
+          sourceType: source.sourceType!.trim(),
+          citationReason: source.citationReason!.trim(),
+        }))
+        .filter((source) => source.label && source.url && source.sourceType && source.citationReason)
+    : [];
+  const imageSeo = Array.isArray(parsed.imageSeo)
+    ? parsed.imageSeo
+        .filter((image) =>
+          image &&
+          typeof image.position === "string" &&
+          typeof image.imageIntent === "string" &&
+          typeof image.fileNameHint === "string" &&
+          typeof image.alt === "string",
+        )
+        .map((image) => ({
+          position: image.position!.trim(),
+          imageIntent: image.imageIntent!.trim(),
+          fileNameHint: image.fileNameHint!.trim(),
+          alt: image.alt!.trim(),
+        }))
+        .filter((image) => image.position && image.imageIntent && image.fileNameHint && image.alt)
+    : [];
 
   // コンプライアンス自動修正
   const { html: complianceFixed, result: complianceResult } = autoFixCompliance(parsed.htmlContent);
@@ -1308,6 +1530,10 @@ function buildGeneratedArticle(parsed: ParsedArticle, keyword: string, themeLabe
     tags: parsed.tags || [],
     faqSchema: faq,
     products,
+    seoNotes,
+    internalLinks,
+    externalSources,
+    imageSeo,
   };
 }
 
@@ -1323,6 +1549,7 @@ export async function generateArticle(
   existingPosts?: { title: string; url: string }[],
 ): Promise<GeneratedArticle> {
   let prompt = buildAutoPrompt(keyword, theme, genreName, targetAge, existingPosts);
+  prompt += `\n\n${ARTICLE_GENERATION_SEO_ADDON_BLOCK}`;
   if (trendContext) {
     prompt += `\n\n【最新トレンド情報】以下の最新トレンド情報を記事に反映してください。ただし、情報の正確性を確認できない場合は「最近注目されている」程度の言及にとどめてください：\n${trendContext}`;
   }
@@ -1346,7 +1573,7 @@ export async function generateProductArticle(
   targetAge: TargetAge = "30s",
   customKeyword?: string
 ): Promise<GeneratedArticle> {
-  const prompt = buildProductPrompt(products, genreName, targetAge, customKeyword);
+  const prompt = `${buildProductPrompt(products, genreName, targetAge, customKeyword)}\n\n${ARTICLE_GENERATION_SEO_ADDON_BLOCK}`;
   const responseText = await callClaude(apiKey, prompt);
   const parsed = extractJSON(responseText);
   return buildGeneratedArticle(parsed, customKeyword || products.join(" / "), "商品レビュー");
@@ -1367,6 +1594,7 @@ export async function generateProductArticleWithReviews(
   balloonOpts?: { authorIconUrl?: string; authorName?: string },
 ): Promise<GeneratedArticle> {
   let prompt = buildProductPrompt(products, genreName, targetAge, customKeyword, comparisonMode);
+  prompt += `\n\n${ARTICLE_GENERATION_SEO_ADDON_BLOCK}`;
 
   // 価格帯に応じた文体指示
   const priceTone = buildPriceToneBlock(pricePreset);
@@ -1651,6 +1879,7 @@ export async function generateCategoryArticle(
   if (!cat) throw new Error(`Unknown category: ${categoryId}`);
 
   let prompt = buildCategoryPrompt(categoryId, existingPosts, targetAge, subThemeIds);
+  prompt += `\n\n${ARTICLE_GENERATION_SEO_ADDON_BLOCK}`;
   if (suggestTopic) {
     prompt += `\n\n## 注目トピック（Google検索で今注目されているキーワード）\n「${suggestTopic}」が今検索で注目されています。このトピックを記事の中心テーマまたは重要セクションとして取り上げてください。タイトルにも自然に含めてください。`;
   }
@@ -1661,6 +1890,132 @@ export async function generateCategoryArticle(
   const responseText = await callClaude(apiKey, prompt, 12000);
   const parsed = extractJSON(responseText);
   const article = buildGeneratedArticle(parsed, cat.seoKeywords[0], cat.label);
+  if (balloonOpts?.authorIconUrl) {
+    article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+  return article;
+}
+
+function buildIngredientPrompt(
+  ingredient: IngredientCandidate,
+  targetAge: TargetAge,
+  existingPosts: ExistingPost[],
+): string {
+  const d = getDateLabels();
+  const ageLabel = targetAge === "20s" ? "20代" : targetAge === "30s" ? "30代" : "40代";
+  const relatedPosts = existingPosts
+    .slice(0, 12)
+    .map((post) => `- ${post.title} (${post.url})`)
+    .join("\n");
+  const relatedPostsBlock = relatedPosts
+    ? `\n## 内部リンク候補\n${relatedPosts}\n`
+    : "";
+  const toneNote = ingredient.status === "watchlist"
+    ? "この成分は話題先行の側面もあるため、推奨一辺倒にせず、期待値調整と注意点の説明を厚めにしてください。"
+    : "この成分はおすすめ候補として扱いますが、万能・絶対・治療のような断定表現は避けてください。";
+
+  return `あなたは美容メディアの編集者です。${d.monthLabel}時点の情報として、成分解説を中心にした日本語のSEO記事を1本作成してください。
+
+## 記事のテーマ
+- 成分名: ${ingredient.name}
+- 記事スタンス: ${ingredient.status === "recommended" ? "おすすめ成分" : "流行中だが慎重に扱う成分"}
+- 想定読者: ${ageLabel}を中心にスキンケア成分を理解したい人
+- 記事の主軸: ${ingredient.articleAngle}
+- 成分概要: ${ingredient.summary}
+- エビデンス水準: ${ingredient.evidenceLevel}
+- トレンドスコア: ${ingredient.trendScore}/100
+- 想定悩み: ${ingredient.concernTags.join(" / ")}
+- ベネフィットタグ: ${ingredient.benefitTags.join(" / ")}
+- 今流行している理由:
+${ingredient.trendSignals.map((signal) => `  - ${signal}`).join("\n")}
+- 推薦理由:
+${ingredient.whyRecommended.map((reason) => `  - ${reason}`).join("\n")}
+- 注意点:
+${ingredient.caution.map((note) => `  - ${note}`).join("\n")}
+- NG表現:
+${ingredient.avoidClaims.map((claim) => `  - ${claim}`).join("\n")}
+
+## 重要な編集方針
+- ${toneNote}
+- 記事は「成分の説明」が主役。商品おすすめは主役にしない
+- 効果は「期待できる可能性がある」「〜しやすい」「〜をサポートすることがある」などで表現する
+- 医薬品・医療行為のような断定、治療表現、再生表現は禁止
+- 濃度、併用、頻度、刺激リスク、パッチテストなど、読者が失敗しにくい情報を優先する
+- 2026年のトレンドとして、なぜ再注目されているかを導入か中盤で必ず説明する
+- 比較が有効な場合は、近い成分との違いを1セクション入れる
+- FAQは3問。検索で聞かれやすい内容にする
+- 商品を出す場合でも一般論の範囲に留め、ランキング調にしない
+- 必要なら内部リンク候補を1〜2件だけ自然に挿入する
+${relatedPostsBlock}
+
+## 必須構成
+1. 導入: ${ingredient.name}が${d.year}年に注目される理由
+2. ${ingredient.name}とは何か
+3. どんな悩みに向いているか
+4. 期待できる働きと、期待しすぎない方がいい点
+5. 向いている人・慎重に使いたい人
+6. 使い方のコツ
+7. 相性のよい成分・避けたい組み合わせ
+8. アイテム選びのポイント
+9. よくある質問
+10. まとめ
+
+## HTMLルール
+- htmlContentは完成したHTML全文を返す
+- h2/h3、ul/li、table、blockquoteなどを適切に使う
+- 冒頭に要点ボックスを1つ入れる
+- 注意点セクションでは読み飛ばされないように箇条書きを使う
+- FAQはHTML内にも見出し付きで記載する
+
+${COMPLIANCE_BLOCK}
+
+${REFERENCES_BLOCK}
+
+## 出力形式
+\`\`\`json
+{
+  "title": "${ingredient.name}の効果と使い方を解説【${d.year}年版】",
+  "metaDescription": "120文字前後のメタディスクリプション",
+  "htmlContent": "完成したHTML全文",
+  "slug": "${ingredient.slug}-effects-how-to-use-${d.year}",
+  "focusKeyword": "${ingredient.searchKeywords[0]}",
+  "keyword": "${ingredient.searchKeywords[0]}",
+  "themeLabel": "${ingredient.name}成分記事",
+  "tags": ["${ingredient.name}", "${ingredient.concernTags[0] || "スキンケア"}", "成分解説"],
+  "faq": [
+    { "question": "Q1", "answer": "A1" },
+    { "question": "Q2", "answer": "A2" },
+    { "question": "Q3", "answer": "A3" }
+  ]
+}
+\`\`\`
+
+JSON以外は返さないでください。`;
+}
+
+export async function generateIngredientArticle(
+  apiKey: string,
+  ingredientId: string,
+  existingPosts: ExistingPost[],
+  targetAge: TargetAge = "30s",
+  balloonOpts?: { authorIconUrl?: string; authorName?: string },
+): Promise<GeneratedArticle> {
+  const ingredient = getIngredientCandidate(ingredientId);
+  if (!ingredient) throw new Error(`Unknown ingredient: ${ingredientId}`);
+
+  let prompt = buildIngredientPrompt(ingredient, targetAge, existingPosts);
+  prompt += `\n\n${ARTICLE_GENERATION_SEO_ADDON_BLOCK}`;
+  if (balloonOpts) {
+    prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
+  }
+
+  const responseText = await callClaude(apiKey, prompt, 12000);
+  const parsed = extractJSON(responseText);
+  const article = buildGeneratedArticle(
+    parsed,
+    ingredient.searchKeywords[0] || ingredient.name,
+    `${ingredient.name}成分記事`,
+  );
   if (balloonOpts?.authorIconUrl) {
     article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
@@ -1821,6 +2176,7 @@ export async function generatePersonalReviewArticle(
   balloonOpts?: { authorIconUrl?: string; authorName?: string },
 ): Promise<GeneratedArticle> {
   let prompt = buildPersonalReviewPrompt(review, photoUrls, targetAge);
+  prompt += `\n\n${ARTICLE_GENERATION_SEO_ADDON_BLOCK}`;
   if (balloonOpts) {
     prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
@@ -1939,6 +2295,8 @@ ${REFERENCES_BLOCK}
 }
 ` + "```";
 
+  prompt = buildPasteSeoPrompt(pasteTitle, pasteHtml, pasteKeyword, ageLabel, year, monthLabel, seasonLabel);
+
   if (balloonOpts) {
     prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
@@ -1951,6 +2309,76 @@ ${REFERENCES_BLOCK}
     article.htmlContent = fixBalloonIcons(article.htmlContent, balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
   return article;
+}
+
+function buildPasteSeoPrompt(
+  pasteTitle: string,
+  pasteHtml: string,
+  pasteKeyword: string,
+  ageLabel: string,
+  year: number,
+  monthLabel: string,
+  seasonLabel: string,
+): string {
+  const keywordNote = pasteKeyword ? `- 狙う主キーワード: ${pasteKeyword}` : "- 狙う主キーワードは元記事から推定して設定すること";
+
+  return `あなたはプロの美容ライター兼SEOコンサルタントです。
+以下に「元記事」のタイトルとHTML本文を貼り付けます。この元記事の内容・構成をベースに、
+検索順位を本気で取りにいく前提で、SEO最適化された高品質なブログ記事として全面リライトしてください。
+
+## 元記事タイトル
+${pasteTitle}
+
+## 元記事HTML本文
+${pasteHtml}
+
+## 記事の前提
+- メインターゲット: ${ageLabel}女性
+- 季節・年月ラベル: ${monthLabel} / ${seasonLabel} / ${year}年
+- 元記事の主張や事実は尊重しつつ、文章はオリジナルに書き直す
+- コピー率0%を目指すが、根拠や事実は捏造しない
+${keywordNote}
+
+${SEO_REWRITE_SHARED_BLOCK}
+
+## リライト方針
+- 元記事にない補足を加える場合も、検索意図の補完に必要な内容だけを追加する
+- 導入文は検索ユーザーの悩みと結論を最短で伝え、最初の100文字以内に主キーワードを含める
+- H2/H3は検索意図を分担し、読者が次に知りたい順に並べる
+- FAQは本文の重複ではなく、PAAに入りやすい補完質問を3問以上入れる
+- まとめでは結論・注意点・次の行動を簡潔に示す
+- 内部リンク候補が想定できる箇所には、自然な文脈で内部リンク案を本文に組み込む
+
+## 内部リンク方針
+- 導入文付近に1本、主要H2配下に2〜4本、まとめ直前に関連記事群を置く想定で構成する
+- アンカーテキストは「リンク先の主キーワード + 読者便益」が伝わる自然文にする
+- 同一URLへの重複リンクは最大2回まで
+- 本文中の文脈リンクを優先し、関連記事ボックスは補助として使う
+
+## 品質基準
+- 文字数は4,000〜8,000文字を目安に、元記事より情報価値を上げる
+- 各セクションに具体情報を入れるが、数値や効能は根拠URLがある場合のみ追加する
+- AIっぽい抽象表現を避け、自然で読みやすい日本語にする
+- 比較・選び方・注意点の見出しが必要なら追加してよい
+
+## HTML出力ルール
+- 外部CSSリンク（Google Fonts等の<link>タグ）は含めない
+- <style>タグは使わない
+- インラインスタイルのみ使用可
+- 画像タグ（<img>）は含めない
+
+## 重要：黄色マーカー装飾
+htmlContent内で重要箇所に以下のHTMLタグで黄色マーカーを入れること
+<span style="background:linear-gradient(transparent 60%,#fff799 60%)">重要なテキスト</span>
+- 1記事あたり3〜5箇所
+- 結論・注意点・おすすめ条件など短いフレーズに使う
+- 見出しやリンクには使わない
+
+${COMPLIANCE_BLOCK}
+
+${STRICT_REFERENCES_BLOCK}
+
+${SEO_REWRITE_JSON_BLOCK}`;
 }
 
 // ==========================================
@@ -2247,6 +2675,176 @@ ${REFERENCES_BLOCK}
   return header + modeBlock + footer;
 }
 
+function buildRewritePromptV2(
+  existingTitle: string,
+  existingHtml: string,
+  mode: RewriteMode,
+  options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
+): string {
+  const d = getDateLabels();
+  const keyword = options?.keyword || "(既存記事から推定)";
+  const themeLabel = options?.themeLabel || "(既存記事から推定)";
+  const relatedCtx = options?.relatedPostsContext
+    ? `\n## 関連記事候補（内部リンク設計に使うこと）\n${options.relatedPostsContext}\n`
+    : "";
+  const sharedSeoBlock = mode === "add-products" ? "" : SEO_REWRITE_SHARED_BLOCK;
+
+  const header = `あなたはSEOに精通した美容ブログのプロ編集者です。
+以下の既存記事を、検索順位改善を最優先にしながら編集してください。
+
+★ 大原則
+- 記事の主張・事実・論調は維持する
+- ゼロから書き直すのではなく、既存記事をベースに改善する
+- ただしSEO改善に必要な見出し再編、補足段落追加、FAQ再設計、参考文献整理、内部リンク再設計は許容する
+- 検索意図との一致を優先し、読者の次の疑問を先回りして解消する
+
+【既存タイトル】${existingTitle}
+【既存HTML本文】
+${existingHtml}
+
+【現在の日付情報】${d.monthLabel}（${d.halfLabel} / ${d.seasonLabel}）
+【狙うキーワード】${keyword}
+【テーマ】${themeLabel}
+
+${sharedSeoBlock}${relatedCtx}`;
+
+  let modeBlock = "";
+
+  if (mode === "seo") {
+    modeBlock = `
+## 編集方針：SEO改善（検索順位強化）
+
+### 目的
+- 軽微修正ではなく、検索意図補完 + H2最適化 + 導入文改善 + FAQ/PAA再設計 + 内外部リンク強化を行う
+- 本文の主張や主要事実は維持するが、読者理解を高めるための見出し再編と補足段落追加は許容する
+
+### 必須修正
+1. 日付・鮮度表現を ${CURRENT_YEAR}年 / ${d.monthLabel} 基準で見直す
+2. タイトルを検索意図優先で再設計し、主キーワードを前半に置く
+3. 導入文の最初の100文字に主キーワードを自然に含める
+4. H2ごとに異なる検索意図を担当させ、見出し重複を避ける
+5. 本文の不足情報を補う短い補足段落を必要箇所に追加する
+6. FAQはPAAを狙う補完質問に刷新する
+7. 根拠を追加した箇所には必ず外部リンクURL付きの参考文献を付ける
+
+### 内部リンク設計
+- 導入文付近に最重要の関連記事リンクを1本配置する
+- 主要H2配下に2〜4本の文脈内部リンクを入れる
+- まとめ直前に関連記事リストを1箇所入れる
+- アンカーテキストは「リンク先の主キーワード + 読者便益」が伝わる自然文にする
+- 同一URLへのリンクは最大2回まで
+- 内部リンク挿入用に必要なら以下の形式も使ってよい
+  <p class="internal-link-suggestion">▶ 【関連記事】関連する記事タイトル</p>
+
+### 変えてはいけないこと
+- 医学的断定や根拠のない強い表現を追加しない
+- 既存のアフィリエイトリンクは壊さない
+- 記事の結論を別物にしない`;
+  } else if (mode === "add-products") {
+    const productList = (options?.products || []).map((p, i) => `${i + 1}. ${p}`).join("\n");
+    modeBlock = `
+## 編集方針：アフィリエイト商品の追加のみ
+
+【追加する商品】
+${productList}
+
+### やること
+- 上記の商品を記事内の適切な位置にだけ追加する
+- 各商品は「特徴」「こんな人におすすめ」を2〜3文で自然に紹介する
+- 商品紹介の直後に以下のプレースホルダーを置く
+  <p class="affiliate-placeholder">【アフィリエイトリンク挿入予定：商品名】</p>
+- 比較表があれば必要な行だけ追加する
+- 「※ 効果には個人差があります」の注記を入れる
+
+### 変えてはいけないこと
+- 既存本文は必要最小限以外書き換えない
+- タイトル・メタディスクリプション・スラッグはそのまま返す
+- 既存アフィリエイトリンクを壊さない`;
+  } else if (mode === "internal-links") {
+    modeBlock = `
+## 編集方針：内部リンク構造の強化のみ（SEO特化）
+
+### 目的
+- 本文の主張や表現を壊さず、内部リンクの役割設計だけを最適化する
+- どのH2で何の疑問を次の記事に送るかを明確にする
+
+### 実行ルール
+1. 導入文付近に最重要リンクを1本入れる
+2. 主要H2配下に2〜4本の文脈内部リンクを入れる
+3. まとめ直前に関連記事群を1箇所入れる
+4. 同一URLへのリンクは最大2回まで
+5. 本文リンクを優先し、関連記事ボックスは補助にする
+6. 上位スコアの記事から優先して使い、可能なら上位3件はどこかで必ず触れる
+
+### アンカーテキストのルール
+- 「こちら」「この記事」など曖昧語は禁止
+- リンク先の主キーワードを含めつつ、読者便益が伝わる自然文にする
+- 2〜20文字程度の自然な日本語フレーズにする
+
+### 出力上の注意
+- 本文の意味を変えない
+- タイトル・メタディスクリプション・スラッグは原則維持
+- 既存の外部リンク・アフィリエイトリンクは壊さない`;
+  } else if (mode === "youtube-seo") {
+    modeBlock = `
+## 編集方針：YouTube紹介記事のSEO完全リライト
+
+### 目的
+- 動画要約だけで終わらせず、動画要点の整理、専門性/E-E-A-T補強、PAA向けFAQ、出典URL付き参考文献まで入れる
+- 既存の動画埋め込み、事実、アフィリエイトリンクは維持する
+
+### 必須要件
+1. タイトルは主キーワード先頭 + 数字 + 読者便益が伝わる形にする
+2. 導入文の1文目に主キーワードを入れる
+3. 「この記事でわかること」ボックスを入れる
+4. チャンネルの専門性・信頼性を示すH2を入れる
+5. 動画の要点を番号付きで整理するH2を入れる
+6. FAQをPAA向けに3問以上作る
+7. 参考文献はURL付きで2〜5件入れる
+8. 既存動画URLとFAQ内容に基づくFAQPage / VideoObject用の構造化データを本文末尾に置く
+
+### 変えてはいけないこと
+- YouTube埋め込みコードは維持
+- 既存アフィリエイトリンクは壊さない
+- 事実が確認できない補足を作らない`;
+  } else {
+    const productList = (options?.products || []).map((p, i) => `${i + 1}. ${p}`).join("\n");
+    const productSection = productList
+      ? `\n### 商品追加\n- 以下の商品は必要な場合のみ差し込む\n${productList}\n- 追加直後に <p class="affiliate-placeholder">【アフィリエイトリンク挿入予定：商品名】</p> を置く`
+      : "";
+
+    modeBlock = `
+## 編集方針：総合改善（SEO + 可読性 + 導線）
+
+### 目的
+- \`seo\` モードの改善に加え、冗長削除、比較観点の補強、CTA整理、必要時のみ商品差し込みまで行う
+
+### 必須修正
+1. 古い情報や鮮度の低い表現を更新する
+2. タイトル・導入文・H2・FAQ・まとめを検索意図に合わせて再設計する
+3. 冗長な言い回しを削り、AIっぽい抽象表現を自然文に直す
+4. 内部リンクを役割設計ベースで配置する
+5. 参考文献をURL付きで整理する
+6. 必要なら比較基準・選び方・向いている人/向かない人を補う
+${productSection}
+
+### 変えてはいけないこと
+- 記事の結論を別物にしない
+- 根拠のない比較優位を作らない
+- 既存アフィリエイトリンクを壊さない`;
+  }
+
+  return `${header}
+
+${modeBlock}
+
+${COMPLIANCE_BLOCK}
+
+${STRICT_REFERENCES_BLOCK}
+
+${SEO_REWRITE_JSON_BLOCK}`;
+}
+
 /** 既存記事のリライト（SEO改善 / 商品追加 / 総合改善 / 内部リンク強化） */
 export async function rewriteArticle(
   apiKey: string,
@@ -2255,7 +2853,7 @@ export async function rewriteArticle(
   mode: RewriteMode,
   options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
 ): Promise<GeneratedArticle> {
-  const prompt = buildRewritePrompt(existingTitle, existingHtml, mode, options);
+  const prompt = buildRewritePromptV2(existingTitle, existingHtml, mode, options);
   const responseText = await callClaude(apiKey, prompt, 16000);
   const parsed = extractJSON(responseText);
   return buildGeneratedArticle(
