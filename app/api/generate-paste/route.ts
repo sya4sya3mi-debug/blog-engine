@@ -4,7 +4,8 @@
 // ファクトチェックはクライアント側で実行（Edge Function時間制限対策）
 // ==========================================
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 import { getConfig } from "@/lib/config";
 import { generatePasteArticle } from "@/lib/generate";

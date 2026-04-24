@@ -1887,7 +1887,7 @@ export async function generateCategoryArticle(
     prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
   // カテゴリー記事は長文なのでmax_tokensを増やす
-  const responseText = await callClaude(apiKey, prompt, 12000);
+  const responseText = await callClaude(apiKey, prompt, 20000);
   const parsed = extractJSON(responseText);
   const article = buildGeneratedArticle(parsed, cat.seoKeywords[0], cat.label);
   if (balloonOpts?.authorIconUrl) {
@@ -2009,7 +2009,7 @@ export async function generateIngredientArticle(
     prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
 
-  const responseText = await callClaude(apiKey, prompt, 12000);
+  const responseText = await callClaude(apiKey, prompt, 20000);
   const parsed = extractJSON(responseText);
   const article = buildGeneratedArticle(
     parsed,
@@ -2301,7 +2301,7 @@ ${REFERENCES_BLOCK}
     prompt += "\n" + buildBalloonBlock(balloonOpts.authorIconUrl, balloonOpts.authorName);
   }
 
-  const rawJson = await callClaude(apiKey, prompt, 16000);
+  const rawJson = await callClaude(apiKey, prompt, 24000);
   const parsed = extractJSON(rawJson);
   const article = buildGeneratedArticle(parsed, pasteKeyword || "paste-article", "テキスト貼り付け");
 
