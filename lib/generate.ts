@@ -1332,6 +1332,41 @@ async function callClaude(apiKey: string, prompt: string, maxTokens?: number) {
   return text;
 }
 
+/** リライト専用Claude呼び出し（Sonnetモデル使用） */
+async function callClaudeSonnet(apiKey: string, prompt: string, maxTokens?: number) {
+  const client = new Anthropic({ apiKey });
+  const effectiveMaxTokens = maxTokens || 24000;
+
+  const stream = client.messages.stream({
+    model: "claude-sonnet-4-5",
+    max_tokens: effectiveMaxTokens,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  let text = "";
+  let stopReason: string | null = null;
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      text += event.delta.text;
+    } else if (event.type === "message_delta" && event.delta.stop_reason) {
+      stopReason = event.delta.stop_reason;
+    }
+  }
+
+  if (!text) {
+    throw new Error("Claude APIから空のレスポンスが返されました");
+  }
+
+  if (stopReason === "max_tokens") {
+    console.warn(
+      `[callClaudeSonnet] Response truncated by max_tokens (limit=${effectiveMaxTokens}, got=${text.length} chars). ` +
+      `Article may be cut off mid-sentence. Consider raising max_tokens for this call.`
+    );
+  }
+
+  return text;
+}
+
 /** FAQ構造化データ（JSON-LD）を生成してHTMLに埋め込む */
 function buildFaqSchema(faq: { question: string; answer: string }[]): string {
   if (!faq || faq.length === 0) return "";
@@ -2854,7 +2889,7 @@ export async function rewriteArticle(
   options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
 ): Promise<GeneratedArticle> {
   const prompt = buildRewritePromptV2(existingTitle, existingHtml, mode, options);
-  const responseText = await callClaude(apiKey, prompt, 24000);
+  const responseText = await callClaudeSonnet(apiKey, prompt, 24000);
   const parsed = extractJSON(responseText);
   return buildGeneratedArticle(
     parsed,
