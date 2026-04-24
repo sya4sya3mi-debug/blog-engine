@@ -9,8 +9,8 @@ import { getConfig } from "@/lib/config";
 import { analyzeYouTubeVideo, buildGeminiContext } from "@/lib/gemini";
 import { getVideoDetails, buildVideoContext } from "@/lib/youtube-captions";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
-import { factCheckArticle } from "@/lib/fact-check";
-import { COMPLIANCE_BLOCK, REFERENCES_BLOCK } from "@/lib/generate";
+import { buildAuditSummary, factCheckArticle } from "@/lib/fact-check";
+import { ARTICLE_GENERATION_SEO_ADDON_BLOCK, COMPLIANCE_BLOCK, STRICT_REFERENCES_BLOCK } from "@/lib/generate";
 
 export async function POST(req: Request) {
   const config = getConfig();
@@ -370,6 +370,11 @@ async function generateYouTubeArticle(
     slug,
     tags: article.tags || [],
     faqSchema: article.faqSchema || [],
+    seoNotes: article.seoNotes || undefined,
+    internalLinks: article.internalLinks || undefined,
+    externalSources: article.externalSources || undefined,
+    imageSeo: article.imageSeo || undefined,
+    auditSummary: undefined as { score: number; topRisks: string[]; nextFixes: string[] } | undefined,
     trendSource: "youtube",
     trendUrl: videoUrl,
     productsFound: rakutenProducts.length,
@@ -392,6 +397,7 @@ async function generateYouTubeArticle(
         resultArticle.htmlContent = fcResult.improved.htmlContent;
         resultArticle.metaDescription = fcResult.improved.metaDescription;
         resultArticle.tags = fcResult.improved.tags;
+        resultArticle.auditSummary = buildAuditSummary(fcResult.report);
         console.log("[YT-Article FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
       }
     } catch (e: any) {
@@ -561,7 +567,9 @@ Googleの「他のユーザーの質問」（PAA）に掲載されやすい形�
 
 ${COMPLIANCE_BLOCK}
 
-${REFERENCES_BLOCK}
+${STRICT_REFERENCES_BLOCK}
+
+${ARTICLE_GENERATION_SEO_ADDON_BLOCK}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## JSON出力（必ずこの形式で）

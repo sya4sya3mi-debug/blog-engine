@@ -8,7 +8,7 @@ import { getConfig, ALL_GENRES } from "@/lib/config";
 import { generateArticle, generateProductArticleWithReviews, TargetAge } from "@/lib/generate";
 import { AffiliateLink, replaceAffiliatePlaceholders } from "@/lib/affiliate";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
-import { factCheckArticle } from "@/lib/fact-check";
+import { buildAuditSummary, factCheckArticle } from "@/lib/fact-check";
 import { WordPressClient } from "@/lib/wordpress";
 
 // Edge Runtimeを使用（Hobby: 25秒 → ストリーミングで延長可能）
@@ -228,6 +228,7 @@ export async function POST(req: NextRequest) {
               article.htmlContent = fcResult.improved.htmlContent;
               article.metaDescription = fcResult.improved.metaDescription;
               article.tags = fcResult.improved.tags;
+              article.auditSummary = buildAuditSummary(fcResult.report);
               console.log("[Generate FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
             } else {
               console.warn("[Generate FactCheck] レビュー失敗（元の記事を使用）:", fcResult.error);
@@ -254,6 +255,11 @@ export async function POST(req: NextRequest) {
             keyword: article.keyword,
             themeLabel: article.themeLabel,
             tags: article.tags,
+            seoNotes: article.seoNotes,
+            internalLinks: article.internalLinks,
+            externalSources: article.externalSources,
+            imageSeo: article.imageSeo,
+            auditSummary: article.auditSummary,
           },
           productNames: productNamesForImage,
         })));

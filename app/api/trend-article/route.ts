@@ -8,8 +8,8 @@ export const runtime = "edge";
 import { getConfig } from "@/lib/config";
 import { getVideoDetails } from "@/lib/youtube-captions";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
-import { factCheckArticle } from "@/lib/fact-check";
-import { COMPLIANCE_BLOCK, REFERENCES_BLOCK } from "@/lib/generate";
+import { buildAuditSummary, factCheckArticle } from "@/lib/fact-check";
+import { ARTICLE_GENERATION_SEO_ADDON_BLOCK, COMPLIANCE_BLOCK, STRICT_REFERENCES_BLOCK } from "@/lib/generate";
 import { analyzeYouTubeVideo, buildGeminiContext } from "@/lib/gemini";
 
 export async function POST(req: Request) {
@@ -313,6 +313,11 @@ async function generateTrendArticle(trend: any, config: any, extraText?: string)
     slug,
     tags: article.tags || [],
     faqSchema: article.faqSchema || [],
+    seoNotes: article.seoNotes || undefined,
+    internalLinks: article.internalLinks || undefined,
+    externalSources: article.externalSources || undefined,
+    imageSeo: article.imageSeo || undefined,
+    auditSummary: undefined as { score: number; topRisks: string[]; nextFixes: string[] } | undefined,
     trendSource: trend.source,
     trendUrl: trend.sourceUrl,
     productsFound: rakutenProducts.length,
@@ -334,6 +339,7 @@ async function generateTrendArticle(trend: any, config: any, extraText?: string)
         resultArticle.htmlContent = fcResult.improved.htmlContent;
         resultArticle.metaDescription = fcResult.improved.metaDescription;
         resultArticle.tags = fcResult.improved.tags;
+        resultArticle.auditSummary = buildAuditSummary(fcResult.report);
         console.log("[Trend FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
       } else {
         console.warn("[Trend FactCheck] レビュー失敗（元の記事を使用）:", fcResult.error);
@@ -401,7 +407,9 @@ ${productContext ? "4. H2: おすすめ商品（400文字）: 商品プレース
 
 ${COMPLIANCE_BLOCK}
 
-${REFERENCES_BLOCK}
+${STRICT_REFERENCES_BLOCK}
+
+${ARTICLE_GENERATION_SEO_ADDON_BLOCK}
 
 ## 出典表記（必須）
 - 記事内で情報を引用・参照した箇所には必ず出典元を明記すること

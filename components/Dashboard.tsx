@@ -74,12 +74,30 @@ interface AffiliatePartner {
   estimatedCpa: number;
 }
 
+interface IngredientCandidateUI {
+  id: string;
+  name: string;
+  slug: string;
+  status: "recommended" | "watchlist";
+  evidenceLevel: "high" | "medium";
+  trendScore: number;
+  complianceRisk: "low" | "medium";
+  summary: string;
+  articleAngle: string;
+  concernTags: string[];
+  benefitTags: string[];
+  trendSignals: string[];
+  whyRecommended: string[];
+  caution: string[];
+  updatedAt: string;
+}
+
 interface HistoryItem {
   id: number;
   title: string;
   keyword: string;
   themeLabel: string;
-  mode: "auto" | "theme" | "product" | "category" | "paste";
+  mode: "auto" | "theme" | "product" | "category" | "paste" | "ingredient" | "personal-review";
   htmlContent: string;
   metaDescription: string;
   wpPostId?: number;
@@ -178,7 +196,7 @@ export default function Dashboard() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   // Generate state
-  const [genMode, setGenMode] = useState<"theme" | "product" | "category" | "personal-review" | "paste" | "youtube-video">("category");
+  const [genMode, setGenMode] = useState<"theme" | "product" | "category" | "ingredient" | "personal-review" | "paste" | "youtube-video">("category");
   // YouTube動画記事モード用state
   const [ytVideoUrl, setYtVideoUrl] = useState("");
   const [ytAnalyzing, setYtAnalyzing] = useState(false);
@@ -217,6 +235,11 @@ export default function Dashboard() {
   const [categoryThemeSuggestions, setCategoryThemeSuggestions] = useState<any[]>([]);
   const [categoryThemesLoading, setCategoryThemesLoading] = useState(false);
   const [categoryThemeError, setCategoryThemeError] = useState("");
+  const [ingredientSuggestions, setIngredientSuggestions] = useState<IngredientCandidateUI[]>([]);
+  const [ingredientLoading, setIngredientLoading] = useState(false);
+  const [ingredientError, setIngredientError] = useState("");
+  const [ingredientUpdatedAt, setIngredientUpdatedAt] = useState("");
+  const [selectedIngredientId, setSelectedIngredientId] = useState("");
   // テキスト貼り付けモード
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteHtml, setPasteHtml] = useState("");
@@ -273,6 +296,7 @@ export default function Dashboard() {
   const safePartners = Array.isArray(partners) ? partners : [];
   const safeSelectedSubThemes = Array.isArray(selectedSubThemes) ? selectedSubThemes : [];
   const safeReviewSkinConcerns = Array.isArray(reviewSkinConcerns) ? reviewSkinConcerns : [];
+  const selectedIngredient = ingredientSuggestions.find((item) => item.id === selectedIngredientId) || null;
 
   // Rakuten search state
   const [rakutenKeyword, setRakutenKeyword] = useState("");
@@ -410,6 +434,35 @@ export default function Dashboard() {
     setFactChecking(false);
   }
 
+  const loadIngredientSuggestions = useCallback(async () => {
+    setIngredientLoading(true);
+    setIngredientError("");
+    try {
+      const pwd = getPwd();
+      const res = await fetch("/api/ingredient-suggest", {
+        headers: { Authorization: `Bearer ${pwd}` },
+      });
+      const data = await safeJsonResponse(res);
+      const nextIngredients = Array.isArray(data.ingredients) ? data.ingredients : [];
+      setIngredientSuggestions(nextIngredients);
+      setIngredientUpdatedAt(data.updatedAt || "");
+      setSelectedIngredientId((prev) => {
+        if (prev && nextIngredients.some((item: IngredientCandidateUI) => item.id === prev)) return prev;
+        const firstRecommended = nextIngredients.find((item: IngredientCandidateUI) => item.status === "recommended");
+        return firstRecommended?.id || nextIngredients[0]?.id || "";
+      });
+    } catch (e: any) {
+      setIngredientError(e.message || "成分候補の取得に失敗しました");
+    }
+    setIngredientLoading(false);
+  }, [authToken]);
+
+  useEffect(() => {
+    if (genMode === "ingredient" && ingredientSuggestions.length === 0 && !ingredientLoading) {
+      loadIngredientSuggestions();
+    }
+  }, [genMode, ingredientSuggestions.length, ingredientLoading, loadIngredientSuggestions]);
+
   // ---- Generate ----
   async function handleGenerate() {
     setGenerating(true);
@@ -544,6 +597,54 @@ export default function Dashboard() {
         setPreviewItem(catItem);
         setGenerating(false);
         runFactCheck(catData.article);
+        return;
+      } else if (genMode === "ingredient") {
+        if (!selectedIngredientId) {
+          setGenResult({ ok: false, error: "成分を選択してください" });
+          setGenerating(false);
+          return;
+        }
+        const pwd = getPwd();
+        const ingredientController = new AbortController();
+        const ingredientTimeoutId = setTimeout(() => ingredientController.abort(), 180000);
+        const ingredientRes = await fetch("/api/generate-ingredient", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${pwd}` },
+          body: JSON.stringify({
+            ingredientId: selectedIngredientId,
+            targetAge,
+            enableBalloon,
+            authorIconUrl: enableBalloon ? (authorIconUrl || undefined) : undefined,
+            authorName: enableBalloon ? (authorName || "みお") : undefined,
+          }),
+          signal: ingredientController.signal,
+        });
+        clearTimeout(ingredientTimeoutId);
+        const ingredientRaw = await ingredientRes.text();
+        const ingredientJsonMatch = ingredientRaw.trim().match(/\{[\s\S]*\}$/);
+        if (!ingredientJsonMatch) throw new Error("成分記事の生成に失敗しました");
+        const ingredientData = JSON.parse(ingredientJsonMatch[0]);
+        if (!ingredientData.success) throw new Error(ingredientData.error || "生成エラー");
+        const ingredientItem: HistoryItem = {
+          id: Date.now(),
+          title: ingredientData.article.title,
+          keyword: ingredientData.article.keyword,
+          themeLabel: ingredientData.article.themeLabel,
+          mode: "ingredient",
+          htmlContent: ingredientData.article.htmlContent,
+          metaDescription: ingredientData.article.metaDescription,
+          createdAt: new Date().toLocaleString("ja-JP"),
+        };
+        setHistory((prev) => [ingredientItem, ...prev]);
+        setGenResult({
+          ok: true,
+          title: ingredientData.article.title,
+          articleData: ingredientData.article,
+          pendingPublish: true,
+        });
+        setPreviewItem(ingredientItem);
+        setGenerating(false);
+        runFactCheck(ingredientData.article);
         return;
       } else if (genMode === "personal-review") {
         // 本人使用投稿モード
@@ -1135,6 +1236,7 @@ export default function Dashboard() {
               <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
                 {([
                   { id: "category" as const, label: "カテゴリー記事", desc: "まとめ・教科書ページを作成" },
+                  { id: "ingredient" as const, label: "成分記事", desc: "流行成分を選んで解説記事を作成" },
                   { id: "personal-review" as const, label: "本人使用投稿", desc: "写真付き実体験レビュー" },
                   { id: "product" as const, label: "商品指定", desc: "紹介したい商品を直接入力" },
                   { id: "theme" as const, label: "テーマ指定", desc: "サブテーマ＆キーワードから生成" },
@@ -1424,6 +1526,113 @@ export default function Dashboard() {
                         ・サイトの専門性（トピカルオーソリティ）を高めるSEO効果があります
                       </div>
                     </div>
+                  </>
+                ) : genMode === "ingredient" ? (
+                  <>
+                    <div style={{ marginBottom: 20 }}>
+                      <button
+                        onClick={loadIngredientSuggestions}
+                        disabled={ingredientLoading}
+                        style={{ padding: "12px 20px", borderRadius: 10, border: "none", background: ingredientLoading ? "#1A1A28" : "linear-gradient(135deg, #7AE582, #00D4FF)", color: ingredientLoading ? C.textMuted : "#000", fontWeight: 800, fontSize: 13, cursor: ingredientLoading ? "not-allowed" : "pointer", width: "100%", marginBottom: 10 }}
+                      >
+                        {ingredientLoading ? "成分候補を取得中..." : "流行成分の候補を読み込む"}
+                      </button>
+                      {ingredientError && (
+                        <div style={{ padding: "10px 14px", borderRadius: 8, background: "#FF000022", border: "1px solid #FF000066", color: "#FF6666", fontSize: 12, marginBottom: 8 }}>
+                          {ingredientError}
+                        </div>
+                      )}
+                      <div style={{ padding: "12px 16px", background: `${C.accentAlt}11`, borderRadius: 10, border: `1px solid ${C.accentAlt}33` }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.accentAlt, marginBottom: 4 }}>成分記事モードについて</div>
+                        <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.7 }}>
+                          流行している成分候補を「推奨」と「監視枠」に分けて表示します。推奨は記事化しやすい成分、監視枠は話題性はあるものの注意喚起を厚めにしたい成分です。
+                          {ingredientUpdatedAt ? ` 最新の候補更新日: ${ingredientUpdatedAt}` : ""}
+                        </div>
+                      </div>
+                    </div>
+
+                    {(["recommended", "watchlist"] as const).map((status) => {
+                      const items = ingredientSuggestions.filter((item) => item.status === status);
+                      if (items.length === 0) return null;
+                      const isRecommended = status === "recommended";
+                      return (
+                        <div key={status} style={{ marginBottom: 18 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isRecommended ? C.green : C.orange }}>
+                              {isRecommended ? "推奨成分" : "監視枠の成分"}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>
+                              {isRecommended ? "記事化しやすい順" : "慎重運用向け"}
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                            {items.map((item) => {
+                              const selected = selectedIngredientId === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={() => setSelectedIngredientId(item.id)}
+                                  style={{
+                                    padding: "14px 16px",
+                                    borderRadius: 12,
+                                    border: `1.5px solid ${selected ? (isRecommended ? C.green : C.orange) : C.borderLight}`,
+                                    background: selected ? `${isRecommended ? C.green : C.orange}18` : "#14141F",
+                                    color: C.text,
+                                    textAlign: "left",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 800, color: selected ? (isRecommended ? C.green : C.orange) : C.text }}>
+                                      {item.name}
+                                    </div>
+                                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: `${C.accentAlt}22`, color: C.accentAlt }}>
+                                      trend {item.trendScore}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.6, marginBottom: 8 }}>{item.summary}</div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                                    {item.concernTags.slice(0, 3).map((tag) => (
+                                      <span key={tag} style={{ padding: "3px 8px", borderRadius: 999, background: `${C.accent}18`, color: C.accent, fontSize: 10 }}>
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: C.text, marginBottom: 6 }}>
+                                    記事の軸: {item.articleAngle}
+                                  </div>
+                                  <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.6 }}>
+                                    {item.whyRecommended[0]}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {selectedIngredient && (
+                      <div style={{ padding: "14px 16px", background: `${C.green}10`, borderRadius: 12, border: `1px solid ${C.green}33`, marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: C.green }}>
+                            選択中: {selectedIngredient.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: C.textMuted }}>
+                            エビデンス: {selectedIngredient.evidenceLevel} / コンプラリスク: {selectedIngredient.complianceRisk}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.7, marginBottom: 8 }}>
+                          {selectedIngredient.summary}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.text, marginBottom: 8 }}>
+                          推奨理由: {selectedIngredient.whyRecommended.join(" / ")}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.orange, lineHeight: 1.7 }}>
+                          注意点: {selectedIngredient.caution.join(" / ")}
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : genMode === "personal-review" ? (
                   <>
@@ -1934,7 +2143,7 @@ export default function Dashboard() {
                 {/* Generate button */}
                 <button
                   onClick={handleGenerate}
-                  disabled={generating || (genMode === "product" && products.every((p) => !p.name.trim())) || (genMode === "paste" && (!pasteTitle.trim() || !pasteHtml.trim())) || (genMode === "youtube-video" && !ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/))}
+                  disabled={generating || (genMode === "product" && products.every((p) => !p.name.trim())) || (genMode === "ingredient" && !selectedIngredientId) || (genMode === "paste" && (!pasteTitle.trim() || !pasteHtml.trim())) || (genMode === "youtube-video" && !ytVideoUrl.match(/(?:v=|youtu\.be\/)([^&?#]+)/))}
                   style={{
                     width: "100%",
                     background: generating ? "#1A1A28" : `linear-gradient(135deg,${C.accent},${C.green})`,
@@ -2021,7 +2230,17 @@ export default function Dashboard() {
                             {item.wpPostId ? "WP投稿済" : "生成のみ"}
                           </span>
                           <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: `${C.accentAlt}22`, color: C.accentAlt }}>
-                            {item.mode === "product" ? "商品指定" : "テーマ"}
+                            {item.mode === "product"
+                              ? "商品指定"
+                              : item.mode === "category"
+                                ? "カテゴリー"
+                                : item.mode === "ingredient"
+                                  ? "成分記事"
+                                  : item.mode === "personal-review"
+                                    ? "本人使用"
+                                    : item.mode === "paste"
+                                      ? "貼り付け"
+                                      : "テーマ"}
                           </span>
                           <span style={{ fontSize: 11, color: C.textMuted }}>{item.themeLabel}</span>
                         </div>

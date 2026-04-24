@@ -169,6 +169,9 @@ export async function POST(req: NextRequest) {
             tags: article.tags,
             keyword: article.keyword,
             themeLabel: article.themeLabel,
+            seoNotes: article.seoNotes,
+            internalLinks: article.internalLinks,
+            externalSources: article.externalSources,
           },
           original: {
             title: existing.title,

@@ -9,7 +9,7 @@ export const runtime = "edge";
 import { getConfig } from "@/lib/config";
 import { generateCategoryArticle } from "@/lib/generate";
 import { WordPressClient } from "@/lib/wordpress";
-import { factCheckArticle } from "@/lib/fact-check";
+import { buildAuditSummary, factCheckArticle } from "@/lib/fact-check";
 
 export async function POST(req: Request) {
   const config = getConfig();
@@ -90,6 +90,7 @@ export async function POST(req: Request) {
               article.htmlContent = fcResult.improved.htmlContent;
               article.metaDescription = fcResult.improved.metaDescription;
               article.tags = fcResult.improved.tags;
+              article.auditSummary = buildAuditSummary(fcResult.report);
               console.log("[Category FactCheck] " + fcResult.report.changes.length + "件の改善を適用");
             } else {
               console.warn("[Category FactCheck] レビュー失敗（元の記事を使用）:", fcResult.error);
@@ -113,6 +114,11 @@ export async function POST(req: Request) {
             themeLabel: article.themeLabel,
             tags: article.tags,
             faqSchema: article.faqSchema,
+            seoNotes: article.seoNotes,
+            internalLinks: article.internalLinks,
+            externalSources: article.externalSources,
+            imageSeo: article.imageSeo,
+            auditSummary: article.auditSummary,
           },
           internalLinksCount: existingPosts.length,
         })));
