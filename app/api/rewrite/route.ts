@@ -12,7 +12,8 @@ import { replaceInternalLinkPlaceholders, rankRelatedPosts, buildRelatedPostsCon
 import { replaceAffiliatePlaceholders } from "@/lib/affiliate";
 import { searchRakutenProducts, buildRakutenAffiliateHtml } from "@/lib/rakuten";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 // GET: 公開記事一覧（リライト候補）— 直近100件を高速取得
 export async function GET() {
