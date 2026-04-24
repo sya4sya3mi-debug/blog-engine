@@ -2854,7 +2854,7 @@ export async function rewriteArticle(
   options?: { keyword?: string; themeLabel?: string; products?: string[]; relatedPostsContext?: string },
 ): Promise<GeneratedArticle> {
   const prompt = buildRewritePromptV2(existingTitle, existingHtml, mode, options);
-  const responseText = await callClaude(apiKey, prompt, 16000);
+  const responseText = await callClaude(apiKey, prompt, 24000);
   const parsed = extractJSON(responseText);
   return buildGeneratedArticle(
     parsed,
