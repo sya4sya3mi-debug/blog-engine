@@ -3221,6 +3221,131 @@ export default function Dashboard() {
 // ==========================================
 // ==========================================
 // ==========================================
+// ==========================================
+// SEO Score Card for Rewrite Results
+// ==========================================
+function SeoScoreCard({ article, original, C }: { article: any; original: any; C: Record<string, string> }) {
+  const html = article.htmlContent || "";
+  const title = article.title || "";
+  const meta = article.metaDescription || "";
+  const kw = (article.focusKeyword || "").toLowerCase();
+
+  // テキスト文字数（タグ除去）
+  const textOnly = (h: string) => h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const afterText = textOnly(html);
+  const beforeText = textOnly(original.content || "");
+  const afterCount = afterText.length;
+  const beforeCount = beforeText.length;
+
+  // H2数
+  const h2Count = (html.match(/<h2[\s>]/gi) || []).length;
+  // FAQ数
+  const faqCount = (article.faqSchema || []).length;
+  // 内部リンク数（相対 or 同一ドメイン）
+  const internalLinkCount = (html.match(/href="(?:\/|https?:\/\/[^"]*blog-engine)/gi) || []).length;
+  // 外部リンク数
+  const extLinkCount = (html.match(/href="https?:\/\//gi) || []).length - internalLinkCount;
+  // 参考文献数（nofollow）
+  const refCount = (html.match(/noopener noreferrer nofollow/gi) || []).length;
+
+  const titleLen = title.length;
+  const metaLen = meta.length;
+  const kwInTitle = kw ? title.toLowerCase().includes(kw) : null;
+  const kwInIntro = kw ? afterText.slice(0, 200).toLowerCase().includes(kw) : null;
+
+  type CheckItem = { label: string; pass: boolean | null; value?: string; tip: string };
+  const checks: CheckItem[] = [
+    { label: "タイトル文字数", pass: titleLen >= 25 && titleLen <= 60, value: `${titleLen}文字`, tip: "25〜60文字が理想" },
+    { label: "メタディスクリプション", pass: metaLen >= 80 && metaLen <= 160, value: `${metaLen}文字`, tip: "80〜160文字が理想" },
+    { label: "主KWがタイトルに含まれる", pass: kwInTitle, value: kw || "KW未設定", tip: "タイトル前半に主KWを配置" },
+    { label: "主KWが導入文に含まれる", pass: kwInIntro, value: kw || "KW未設定", tip: "最初の200文字に主KWを含める" },
+    { label: "H2見出し数", pass: h2Count >= 3 && h2Count <= 10, value: `${h2Count}個`, tip: "3〜10個が理想" },
+    { label: "FAQ数", pass: faqCount >= 3, value: `${faqCount}問`, tip: "3問以上でFAQPageスキーマ対象" },
+    { label: "外部参考文献リンク", pass: refCount >= 2, value: `${refCount}件`, tip: "2件以上でE-E-A-T強化" },
+  ];
+
+  const passCount = checks.filter((c) => c.pass === true).length;
+  const totalCount = checks.filter((c) => c.pass !== null).length;
+  const score = Math.round((passCount / totalCount) * 100);
+  const scoreColor = score >= 80 ? "#27ae60" : score >= 60 ? "#f39c12" : "#e74c3c";
+
+  return (
+    <div style={{ background: C.bgCard, border: `2px solid ${scoreColor}`, borderRadius: 10, padding: 16, marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: scoreColor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18, flexShrink: 0 }}>
+          {score}
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>SEOスコア: {score}/100</div>
+          <div style={{ fontSize: 12, color: C.textMuted }}>{passCount}/{totalCount} 項目クリア</div>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: C.textMuted }}>文字数</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            {beforeCount.toLocaleString()} → <span style={{ color: afterCount > beforeCount ? "#27ae60" : "#e74c3c" }}>{afterCount.toLocaleString()}</span>
+            <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 4 }}>
+              ({afterCount > beforeCount ? "+" : ""}{(afterCount - beforeCount).toLocaleString()})
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        {checks.map((c, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "5px 8px", borderRadius: 6, background: c.pass === null ? C.bg : c.pass ? "#f0faf4" : "#fdf3f2", border: `1px solid ${c.pass === null ? C.border : c.pass ? "#c3e6cb" : "#f5c6cb"}` }}>
+            <span style={{ fontSize: 14, flexShrink: 0 }}>{c.pass === null ? "⚪" : c.pass ? "✅" : "❌"}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</div>
+              <div style={{ color: C.textMuted, fontSize: 10 }}>{c.value ? `${c.value} — ` : ""}{c.tip}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {article.seoNotes && (
+        <div style={{ marginTop: 12, padding: "10px 12px", background: C.bg, borderRadius: 8, fontSize: 12, borderLeft: "3px solid #3498db" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: "#2980b9" }}>🔍 SEO設計メモ</div>
+          {article.seoNotes.primaryKeyword && <div>主KW: <strong>{article.seoNotes.primaryKeyword}</strong></div>}
+          {article.seoNotes.secondaryKeywords?.length > 0 && <div style={{ marginTop: 2 }}>補助KW: {article.seoNotes.secondaryKeywords.join(" / ")}</div>}
+          {article.seoNotes.searchIntent?.length > 0 && <div style={{ marginTop: 2 }}>検索意図: {article.seoNotes.searchIntent.join(", ")}</div>}
+          {article.seoNotes.titleAngle && <div style={{ marginTop: 2 }}>タイトル角度: {article.seoNotes.titleAngle}</div>}
+          {article.seoNotes.latentNeeds?.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <div style={{ fontWeight: 600 }}>潜在ニーズ:</div>
+              {article.seoNotes.latentNeeds.map((n: string, i: number) => <div key={i} style={{ marginLeft: 8 }}>・{n}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {article.internalLinks?.length > 0 && (
+        <div style={{ marginTop: 10, padding: "10px 12px", background: C.bg, borderRadius: 8, fontSize: 12, borderLeft: "3px solid #9b59b6" }}>
+          <div style={{ fontWeight: 700, marginBottom: 6, color: "#8e44ad" }}>🔗 内部リンク設計 ({article.internalLinks.length}件)</div>
+          {article.internalLinks.slice(0, 4).map((l: any, i: number) => (
+            <div key={i} style={{ marginBottom: 4, paddingBottom: 4, borderBottom: i < Math.min(article.internalLinks.length, 4) - 1 ? `1px solid ${C.border}` : "none" }}>
+              <span style={{ fontWeight: 600 }}>「{l.anchorText}」</span> → {l.targetHint}
+              <span style={{ marginLeft: 6, fontSize: 10, padding: "1px 5px", borderRadius: 3, background: l.linkRole === "money" ? "#ffeeba" : l.linkRole === "parent" ? "#d1ecf1" : "#d4edda", color: "#555" }}>{l.linkRole || "related"}</span>
+              <div style={{ color: C.textMuted, fontSize: 10 }}>{l.placementReason}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {article.externalSources?.length > 0 && (
+        <div style={{ marginTop: 10, padding: "10px 12px", background: C.bg, borderRadius: 8, fontSize: 12, borderLeft: "3px solid #e67e22" }}>
+          <div style={{ fontWeight: 700, marginBottom: 6, color: "#d35400" }}>📚 参考文献 ({article.externalSources.length}件)</div>
+          {article.externalSources.slice(0, 3).map((s: any, i: number) => (
+            <div key={i} style={{ marginBottom: 3 }}>
+              <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: "#2980b9", textDecoration: "none" }}>{s.label}</a>
+              <span style={{ color: C.textMuted }}> — {s.citationReason}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Rewrite Tab Component
 // ==========================================
 // ==========================================
@@ -3345,6 +3470,9 @@ function RewriteResultPreview({ result, C, isMobile, updating, updateDone, apply
   return (
     <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? 16 : 24, marginBottom: 20 }}>
       <h4 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>リライト結果 — 修正前 vs 修正後</h4>
+
+      {/* SEO Score Card */}
+      <SeoScoreCard article={result.article} original={result.original} C={C} />
 
       {/* Title */}
       <Section label="タイトル" isChanged={titleChanged}>
@@ -3481,6 +3609,32 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
   // WordPress 更新
   const [updating, setUpdating] = useState(false);
   const [updateDone, setUpdateDone] = useState(false);
+
+  // キーワード提案
+  const [kwSuggesting, setKwSuggesting] = useState(false);
+  const [kwSuggestions, setKwSuggestions] = useState<any>(null);
+  const [kwSuggestError, setKwSuggestError] = useState("");
+
+  const suggestKeywords = async () => {
+    if (!selectedPost) return;
+    setKwSuggesting(true);
+    setKwSuggestions(null);
+    setKwSuggestError("");
+    try {
+      const res = await fetch("/api/rewrite-keyword-suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ postId: selectedPost.id }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "提案失敗");
+      setKwSuggestions(data.suggestions);
+    } catch (e: any) {
+      setKwSuggestError(e.message);
+    } finally {
+      setKwSuggesting(false);
+    }
+  };
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -3665,9 +3819,18 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
             </div>
           </div>
 
-          {/* Optional keyword */}
+          {/* Optional keyword + Suggest button */}
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>キーワード（任意）</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>キーワード（任意）</label>
+              <button
+                onClick={suggestKeywords}
+                disabled={kwSuggesting}
+                style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.accent}`, cursor: "pointer", background: "transparent", color: C.accent, fontSize: 11, fontWeight: 600, opacity: kwSuggesting ? 0.6 : 1 }}
+              >
+                {kwSuggesting ? "分析中..." : "🔍 AIキーワード提案"}
+              </button>
+            </div>
             <input
               type="text"
               placeholder="例: 医療脱毛 おすすめ"
@@ -3675,6 +3838,78 @@ function RewriteTab({ isMobile, C, authToken }: { isMobile: boolean; C: Record<s
               onChange={(e) => setKeyword(e.target.value)}
               style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: 13, boxSizing: "border-box" }}
             />
+            {kwSuggestError && <p style={{ color: "#e74c3c", fontSize: 12, margin: "6px 0 0" }}>{kwSuggestError}</p>}
+            {kwSuggestions && (
+              <div style={{ marginTop: 10, padding: 12, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8, color: C.accent }}>🎯 AIキーワード提案結果</div>
+
+                {/* Primary keyword */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>主キーワード</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      onClick={() => setKeyword(kwSuggestions.primaryKeyword.keyword)}
+                      style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.accent}`, background: `${C.accent}15`, color: C.accent, cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+                    >
+                      {kwSuggestions.primaryKeyword.keyword}
+                    </button>
+                    <span style={{ color: C.textMuted, fontSize: 11 }}>
+                      検索量:{kwSuggestions.primaryKeyword.searchVolume} / 競合:{kwSuggestions.primaryKeyword.competition} / 意図:{kwSuggestions.primaryKeyword.intent}
+                    </span>
+                  </div>
+                  <div style={{ color: C.textMuted, marginTop: 3 }}>{kwSuggestions.primaryKeyword.reason}</div>
+                </div>
+
+                {/* Secondary keywords */}
+                {kwSuggestions.secondaryKeywords?.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>補助キーワード（クリックで入力欄にセット）</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {kwSuggestions.secondaryKeywords.map((k: any, i: number) => (
+                        <button
+                          key={i}
+                          onClick={() => setKeyword(k.keyword)}
+                          title={`${k.role} [${k.intent}]`}
+                          style={{ padding: "3px 8px", borderRadius: 5, border: `1px solid ${C.border}`, background: C.bgCard, cursor: "pointer", fontSize: 11 }}
+                        >
+                          {k.keyword}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* LSI keywords */}
+                {kwSuggestions.lsiKeywords?.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>共起語（LSI）</div>
+                    <div style={{ color: C.textMuted }}>{kwSuggestions.lsiKeywords.join(" / ")}</div>
+                  </div>
+                )}
+
+                {/* Title suggestions */}
+                {kwSuggestions.titleSuggestions?.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>タイトル案</div>
+                    {kwSuggestions.titleSuggestions.map((t: string, i: number) => (
+                      <div key={i} style={{ padding: "4px 8px", marginBottom: 3, background: C.bgCard, borderRadius: 5, border: `1px solid ${C.border}` }}>
+                        {i + 1}. {t}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Content gaps */}
+                {kwSuggestions.contentGaps?.length > 0 && (
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 4, color: "#e67e22" }}>⚠ コンテンツギャップ（追加推奨トピック）</div>
+                    {kwSuggestions.contentGaps.map((g: string, i: number) => (
+                      <div key={i} style={{ color: C.textMuted, marginBottom: 2 }}>・{g}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Optional theme */}

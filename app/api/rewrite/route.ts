@@ -170,9 +170,11 @@ export async function POST(req: NextRequest) {
             tags: article.tags,
             keyword: article.keyword,
             themeLabel: article.themeLabel,
+            faqSchema: article.faqSchema,
             seoNotes: article.seoNotes,
             internalLinks: article.internalLinks,
             externalSources: article.externalSources,
+            imageSeo: article.imageSeo,
           },
           original: {
             title: existing.title,
